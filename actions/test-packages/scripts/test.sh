@@ -150,10 +150,16 @@ while IFS= read -r package; do
     {
       sed -nE 's/^[0-9:]+ [-+~0-9 ]+: (.*) \[E\]$/\1/p' "$log"
       sed -nE 's/^(::group::)?❌ (.*)$/\2/p' "$log" | sed -E 's/ \((failed|error)\)$//'
-    } | sort -u | head -20 |
+    } | sort -u | head -20 >"$OUT_DIR/$name.failed"
+    if [[ -s "$OUT_DIR/$name.failed" ]]; then
       while IFS= read -r failed_test; do
         echo "::error title=Failed test in $name::${failed_test//%/%25}"
-      done
+      done <"$OUT_DIR/$name.failed"
+    else
+      # No single test failed: loading, compiling or the runner itself did. The end of the output
+      # says why.
+      echo "::error title=Test run of $name::$(grep -v '^::' "$log" | tail -15 | sed 's/%/%25/g' | awk 'BEGIN { ORS = "%0A" } 1')"
+    fi
     echo "::error title=Tests failed::$name ($path) failed with exit code $status."
     failed+=("$name")
   fi
