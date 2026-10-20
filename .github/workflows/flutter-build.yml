@@ -1,0 +1,512 @@
+name: Flutter build
+
+# Builds Flutter apps for every enabled target, each on the runner it needs:
+#
+#   web             ubuntu    build/web, also the part web of the GitHub Pages site
+#   apk, appbundle  ubuntu    signed when the ANDROID_* secrets are set
+#   ios, ipa        macos     signed when the APPLE_* secrets are set
+#   macos           macos     signed and, when asked, notarized
+#   linux-x64       ubuntu    linux-arm64 on an ARM runner
+#   windows-x64     windows   windows-arm64 on an ARM runner
+#
+# Every build is an artifact flutter-<app>-<target>; with release-assets it is also an artifact
+# release-assets-<app>-<target> that github-release.yml attaches to the release.
+#
+# Signing secrets that live in an environment only reach the build when `environment` names it.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before (pipeline.yml passes its own); empty discovers them here.
+        type: string
+        default: ''
+      include:
+        description: Globs of package directories outside the workspace, such as apps/*.
+        type: string
+        default: ''
+      exclude:
+        description: Globs of package directories to leave out.
+        type: string
+        default: ''
+      apps:
+        description: JSON array of app package names to build; empty builds every app (a Flutter package that is not published and has lib/main.dart and a platform directory).
+        type: string
+        default: ''
+      targets:
+        description: JSON object target -> true, false or auto (web, apk, appbundle, ios, ipa, macos, linux-x64, linux-arm64, windows-x64, windows-arm64); auto builds web for apps with a web directory.
+        type: string
+        default: '{"web":"auto"}'
+      flutter-version:
+        description: Flutter version (stable, beta or a version).
+        type: string
+        default: stable
+      flutter-version-file:
+        description: File to read the Flutter version from (pubspec.yaml or .fvmrc); wins over flutter-version.
+        type: string
+        default: ''
+      build-mode:
+        description: release, profile or debug.
+        type: string
+        default: release
+      flavor:
+        description: Build flavor.
+        type: string
+        default: ''
+      target-file:
+        description: Main entry point, such as lib/main_production.dart.
+        type: string
+        default: ''
+      dart-define-from-file:
+        description: File with compile-time variables (JSON or .env), relative to the app.
+        type: string
+        default: ''
+      extra-args:
+        description: Extra arguments for every flutter build command.
+        type: string
+        default: ''
+      build-name:
+        description: pubspec (the version of the pubspec.yaml), version (the version input) or a literal build name.
+        type: string
+        default: pubspec
+      build-number:
+        description: run-number, pubspec or a literal build number.
+        type: string
+        default: run-number
+      version:
+        description: The release version, for build-name version.
+        type: string
+        default: ''
+      obfuscate:
+        description: Obfuscate Dart code; the symbols become an artifact flutter-<app>-<target>-symbols.
+        type: boolean
+        default: false
+      web-wasm:
+        description: Build web with WebAssembly.
+        type: boolean
+        default: false
+      android-split-per-abi:
+        description: Build one APK per ABI.
+        type: boolean
+        default: false
+      export-options-plist:
+        description: ExportOptions.plist for a signed ipa, relative to the app.
+        type: string
+        default: ''
+      macos-notarize:
+        description: Notarize and staple the macOS app (secrets APP_STORE_CONNECT_*).
+        type: boolean
+        default: false
+      java-version:
+        description: Java version for Android builds.
+        type: string
+        default: '17'
+      xcode-version:
+        description: Xcode to select on macOS runners, such as 26.0; empty keeps the default.
+        type: string
+        default: ''
+      environment:
+        description: Environment of the build jobs, for signing secrets stored in an environment.
+        type: string
+        default: ''
+      release-assets:
+        description: Also upload every build as release-assets-<app>-<target> for github-release.yml.
+        type: boolean
+        default: false
+      pages-part-enabled:
+        description: Hand web builds to pages.yml as the part web.
+        type: boolean
+        default: false
+      runners:
+        description: JSON object of runner labels (linux, linux-arm, macos, windows, windows-arm).
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of every build job.
+        type: number
+        default: 60
+      fail-fast:
+        description: Cancel the other builds when one fails.
+        type: boolean
+        default: false
+      harden-runner:
+        description: Run step-security/harden-runner first on Linux runners.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+      pre-setup:
+        description: Shell commands run before any tool is set up.
+        type: string
+        default: ''
+      post-setup:
+        description: Shell commands run after the dependencies are resolved.
+        type: string
+        default: ''
+      pre-build:
+        description: Shell commands run in the app directory before the build; TARGET names the target.
+        type: string
+        default: ''
+      post-build:
+        description: Shell commands run in the app directory after the build; ARTIFACT_DIR is the packaged output.
+        type: string
+        default: ''
+      artifact-retention-days:
+        description: Days to keep the build artifacts.
+        type: number
+        default: 14
+      pub-hosted-url:
+        description: URL of a private package host; its token is the secret PUB_HOSTED_TOKEN.
+        type: string
+        default: ''
+      git-host:
+        description: Host of private git dependencies; its token is the secret GIT_DEPS_TOKEN.
+        type: string
+        default: github.com
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+      APPLE_CERTIFICATE_P12_BASE64:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_PROVISIONING_PROFILES_BASE64:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      APP_STORE_CONNECT_KEY_ID:
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: false
+      APP_STORE_CONNECT_KEY_P8_BASE64:
+        required: false
+
+    outputs:
+      matrix:
+        description: The builds that ran, as a JSON matrix.
+        value: ${{ jobs.plan.outputs.matrix }}
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Discover the packages
+        id: discover
+        uses: $/actions/discover-packages
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          include: ${{ inputs.include }}
+          exclude: ${{ inputs.exclude }}
+          affected-only: 'false'
+
+      - name: Plan the builds
+        id: plan
+        uses: $/actions/plan-builds
+        with:
+          kind: flutter
+          discovery: ${{ steps.discover.outputs.discovery }}
+          targets: ${{ inputs.targets }}
+          apps: ${{ inputs.apps }}
+          runners: ${{ inputs.runners }}
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+
+    env:
+      APP_DIR: ${{ inputs.working-directory }}/${{ matrix.path }}
+      TARGET: ${{ matrix.target }}
+      HAS_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner && runner.os == 'Linux'
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Select Xcode ${{ inputs.xcode-version }}
+        if: runner.os == 'macOS' && inputs.xcode-version != ''
+        shell: bash
+        env:
+          XCODE: ${{ inputs.xcode-version }}
+        run: sudo xcode-select -s "/Applications/Xcode_${XCODE}.app"
+
+      - name: Set up Flutter
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ inputs.flutter-version }}
+          version-file: ${{ inputs.flutter-version-file }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: '[{"path": "${{ matrix.path }}", "workspace": ${{ matrix.workspace }}}]'
+          linux-desktop: ${{ startsWith(matrix.target, 'linux') }}
+          java-version: ${{ (matrix.platform == 'android' && inputs.java-version) || '' }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Sign Android builds
+        if: matrix.platform == 'android' && env.HAS_ANDROID_KEYSTORE == 'true'
+        uses: $/actions/android-signing
+        with:
+          app-directory: ${{ env.APP_DIR }}
+          keystore-base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Sign Apple builds
+        id: apple
+        if: (matrix.platform == 'ios' || matrix.platform == 'macos') && env.HAS_APPLE_CERTIFICATE == 'true'
+        uses: $/actions/apple-signing
+        with:
+          certificate-p12-base64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          provisioning-profiles-base64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+
+      - name: Run the pre-build hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-build
+          run: ${{ inputs.pre-build }}
+          working-directory: ${{ env.APP_DIR }}
+
+      - name: Build
+        id: build
+        working-directory: ${{ env.APP_DIR }}
+        shell: bash
+        env:
+          MODE: ${{ inputs.build-mode }}
+          FLAVOR: ${{ inputs.flavor }}
+          TARGET_FILE: ${{ inputs.target-file }}
+          DEFINES: ${{ inputs.dart-define-from-file }}
+          EXTRA_ARGS: ${{ inputs.extra-args }}
+          BUILD_NAME: ${{ inputs.build-name }}
+          BUILD_NUMBER: ${{ inputs.build-number }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+          OBFUSCATE: ${{ inputs.obfuscate }}
+          WEB_WASM: ${{ inputs.web-wasm }}
+          SPLIT_PER_ABI: ${{ inputs.android-split-per-abi }}
+          EXPORT_OPTIONS: ${{ inputs.export-options-plist }}
+          SIGNED_APPLE: ${{ steps.apple.outputs.signed == 'true' }}
+          APP: ${{ matrix.app }}
+        run: |
+          args=("--$MODE")
+          [[ -n "$FLAVOR" ]] && args+=(--flavor "$FLAVOR")
+          [[ -n "$TARGET_FILE" ]] && args+=(--target "$TARGET_FILE")
+          [[ -n "$DEFINES" ]] && args+=(--dart-define-from-file "$DEFINES")
+          case "$BUILD_NAME" in
+            pubspec) ;;
+            version) [[ -n "$RELEASE_VERSION" ]] && args+=(--build-name "${RELEASE_VERSION%%+*}") ;;
+            *) args+=(--build-name "$BUILD_NAME") ;;
+          esac
+          case "$BUILD_NUMBER" in
+            pubspec) ;;
+            run-number) [[ "$TARGET" != web ]] && args+=(--build-number "$RUN_NUMBER") ;;
+            *) [[ "$TARGET" != web ]] && args+=(--build-number "$BUILD_NUMBER") ;;
+          esac
+          if [[ "$OBFUSCATE" == true && "$TARGET" != web ]]; then
+            args+=(--obfuscate --split-debug-info "build/davils-symbols")
+          fi
+          # shellcheck disable=SC2206
+          [[ -n "$EXTRA_ARGS" ]] && args+=($EXTRA_ARGS)
+
+          out="$RUNNER_TEMP/davils-build/$APP-$TARGET"
+          mkdir -p "$out"
+          case "$TARGET" in
+            web)
+              [[ "$WEB_WASM" == true ]] && args+=(--wasm)
+              flutter build web "${args[@]}" --base-href /
+              cp -R build/web/. "$out/"
+              ;;
+            apk)
+              [[ "$SPLIT_PER_ABI" == true ]] && args+=(--split-per-abi)
+              flutter build apk "${args[@]}"
+              cp build/app/outputs/flutter-apk/*.apk "$out/"
+              ;;
+            appbundle)
+              flutter build appbundle "${args[@]}"
+              find build/app/outputs/bundle -name '*.aab' -exec cp {} "$out/" \;
+              ;;
+            ios)
+              [[ "$SIGNED_APPLE" == true ]] || args+=(--no-codesign)
+              flutter build ios "${args[@]}"
+              (cd build/ios/iphoneos && zip -qry "$out/$APP-ios.zip" ./*.app)
+              ;;
+            ipa)
+              if [[ "$SIGNED_APPLE" == true && -n "$EXPORT_OPTIONS" ]]; then
+                flutter build ipa "${args[@]}" --export-options-plist "$EXPORT_OPTIONS"
+                cp build/ios/ipa/*.ipa "$out/"
+              else
+                flutter build ipa "${args[@]}" --no-codesign
+                (cd build/ios/archive && zip -qry "$out/$APP-unsigned.xcarchive.zip" ./*.xcarchive)
+              fi
+              ;;
+            macos)
+              flutter build macos "${args[@]}"
+              app_path="$(find build/macos/Build/Products -maxdepth 2 -name '*.app' -type d | head -1)"
+              ditto -c -k --keepParent "$app_path" "$out/$APP-macos.zip"
+              echo "app-path=$app_path" >>"$GITHUB_OUTPUT"
+              ;;
+            linux-*)
+              flutter build linux "${args[@]}"
+              bundle="$(find build/linux -type d -path '*/release/bundle' -o -type d -path '*/profile/bundle' -o -type d -path '*/debug/bundle' | head -1)"
+              tar -czf "$out/$APP-$TARGET.tar.gz" -C "$bundle" .
+              ;;
+            windows-*)
+              flutter build windows "${args[@]}"
+              runner_dir="$(find build/windows -type d -path '*/runner/Release' -o -type d -path '*/runner/Profile' -o -type d -path '*/runner/Debug' | head -1)"
+              (cd "$runner_dir" && 7z a -tzip -bso0 "$out/$APP-$TARGET.zip" .)
+              ;;
+          esac
+          echo "directory=$out" >>"$GITHUB_OUTPUT"
+          [[ -d build/davils-symbols ]] && echo "symbols=$PWD/build/davils-symbols" >>"$GITHUB_OUTPUT"
+          ls -la "$out"
+
+      - name: Notarize the macOS app
+        if: matrix.target == 'macos' && inputs.macos-notarize && steps.apple.outputs.signed == 'true'
+        working-directory: ${{ env.APP_DIR }}
+        shell: bash
+        env:
+          ZIP: ${{ steps.build.outputs.directory }}/${{ matrix.app }}-macos.zip
+          APP_PATH: ${{ steps.build.outputs.app-path }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
+        run: |
+          [[ -n "$KEY_ID" && -n "$ISSUER_ID" && -n "$KEY_P8" ]] || { echo "::error::macos-notarize needs the secrets APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and APP_STORE_CONNECT_KEY_P8_BASE64."; exit 1; }
+          key="$RUNNER_TEMP/davils-asc-key.p8"
+          printf '%s' "$KEY_P8" | base64 --decode >"$key"
+          xcrun notarytool submit "$ZIP" --key "$key" --key-id "$KEY_ID" --issuer "$ISSUER_ID" --wait
+          xcrun stapler staple "$APP_PATH"
+          rm -f "$ZIP" "$key"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP"
+
+      - name: Run the post-build hook
+        uses: $/actions/run-hook
+        env:
+          ARTIFACT_DIR: ${{ steps.build.outputs.directory }}
+        with:
+          name: post-build
+          run: ${{ inputs.post-build }}
+          working-directory: ${{ env.APP_DIR }}
+
+      - name: Remove the signing keychain
+        if: always() && steps.apple.outputs.keychain != ''
+        shell: bash
+        env:
+          KEYCHAIN: ${{ steps.apple.outputs.keychain }}
+        run: security delete-keychain "$KEYCHAIN" || true
+
+      - name: Remove the keystore
+        if: always() && matrix.platform == 'android'
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/davils-upload-keystore.jks" "$APP_DIR/android/key.properties"
+
+      - name: Upload the build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flutter-${{ matrix.app }}-${{ matrix.target }}
+          path: ${{ steps.build.outputs.directory }}/
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      - name: Upload the symbols
+        if: steps.build.outputs.symbols != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flutter-${{ matrix.app }}-${{ matrix.target }}-symbols
+          path: ${{ steps.build.outputs.symbols }}/
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      - name: Upload the release asset
+        if: inputs.release-assets && matrix.target != 'web'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets-${{ matrix.app }}-${{ matrix.target }}
+          path: ${{ steps.build.outputs.directory }}/
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      - name: Mark the Pages part
+        if: inputs.pages-part-enabled && matrix.target == 'web'
+        shell: bash
+        env:
+          DIR: ${{ steps.build.outputs.directory }}
+          APP: ${{ matrix.app }}
+        run: |
+          jq -cn --arg id "$APP" '{part: "web", id: $id}' >"$DIR/.davils-part.json"
+
+      - name: Upload the Pages part
+        if: inputs.pages-part-enabled && matrix.target == 'web'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-pages-web-${{ matrix.app }}
+          path: ${{ steps.build.outputs.directory }}/
+          include-hidden-files: true
+          retention-days: ${{ inputs.artifact-retention-days }}

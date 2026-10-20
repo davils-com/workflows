@@ -1,0 +1,73 @@
+name: Apple signing
+description: >-
+  Imports a signing certificate into a temporary keychain and installs provisioning profiles, for
+  signed iOS and macOS builds. Delete the keychain at the end of the job with
+  security delete-keychain on the keychain output (in an if always() step); composite actions have
+  no post step. Nothing happens when the certificate is empty.
+author: davils-com
+
+inputs:
+  certificate-p12-base64:
+    description: The signing certificate with its private key (PKCS12), base64 encoded.
+    required: false
+    default: ''
+  certificate-password:
+    description: Password of the PKCS12 file.
+    required: false
+    default: ''
+  provisioning-profiles-base64:
+    description: Provisioning profiles, each base64 encoded, one per line.
+    required: false
+    default: ''
+
+outputs:
+  signed:
+    description: true when a certificate was imported.
+    value: ${{ steps.import.outputs.signed }}
+  keychain:
+    description: Path of the temporary keychain.
+    value: ${{ steps.import.outputs.keychain }}
+
+runs:
+  using: composite
+  steps:
+    - name: Import the certificate and the profiles
+      id: import
+      shell: bash
+      env:
+        CERTIFICATE: ${{ inputs.certificate-p12-base64 }}
+        CERTIFICATE_PASSWORD: ${{ inputs.certificate-password }}
+        PROFILES: ${{ inputs.provisioning-profiles-base64 }}
+      run: |
+        if [[ -z "$CERTIFICATE" ]]; then
+          echo "signed=false" >>"$GITHUB_OUTPUT"
+          echo "No certificate given; the build is not signed."
+          exit 0
+        fi
+        [[ "$RUNNER_OS" == macOS ]] || { echo "::error::Apple signing needs a macOS runner."; exit 1; }
+        keychain="$RUNNER_TEMP/davils-signing.keychain-db"
+        keychain_password="$(openssl rand -base64 32)"
+        echo "::add-mask::$keychain_password"
+        printf '%s' "$CERTIFICATE" | base64 --decode >"$RUNNER_TEMP/davils-certificate.p12"
+        security create-keychain -p "$keychain_password" "$keychain"
+        security set-keychain-settings -lut 21600 "$keychain"
+        security unlock-keychain -p "$keychain_password" "$keychain"
+        security import "$RUNNER_TEMP/davils-certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+        security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" >/dev/null
+        security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+        rm -f "$RUNNER_TEMP/davils-certificate.p12"
+        profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+        mkdir -p "$profiles_dir"
+        index=0
+        while IFS= read -r profile; do
+          [[ -z "$profile" ]] && continue
+          index=$((index + 1))
+          file="$RUNNER_TEMP/davils-profile-$index"
+          printf '%s' "$profile" | base64 --decode >"$file"
+          uuid="$(security cms -D -i "$file" | plutil -extract UUID raw -o - -)"
+          cp "$file" "$profiles_dir/$uuid.mobileprovision"
+          cp "$file" "$profiles_dir/$uuid.provisionprofile"
+          echo "Installed provisioning profile $uuid."
+        done <<<"$PROFILES"
+        echo "signed=true" >>"$GITHUB_OUTPUT"
+        echo "keychain=$keychain" >>"$GITHUB_OUTPUT"

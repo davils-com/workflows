@@ -1,0 +1,253 @@
+name: Dart compile
+
+# Compiles the executables of Dart packages to native binaries for every target, each on a runner
+# of its own operating system and architecture, smoke tests them and packages them as
+# <name>-<target>.zip (or .tar.gz) with a .sha256 file. Every archive is an artifact
+# release-assets-<name>-<target> that github-release.yml attaches to the release.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before (pipeline.yml passes its own); empty discovers them here.
+        type: string
+        default: ''
+      include:
+        description: Globs of package directories outside the workspace.
+        type: string
+        default: ''
+      exclude:
+        description: Globs of package directories to leave out.
+        type: string
+        default: ''
+      executables:
+        description: JSON array of {package, entrypoint, name}; empty compiles every executable of the pubspec.yaml files.
+        type: string
+        default: ''
+      targets:
+        description: JSON array of targets (linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64, windows-arm64).
+        type: string
+        default: '["linux-x64","linux-arm64","macos-arm64","macos-x64","windows-x64"]'
+      sdk:
+        description: Dart SDK (stable, beta or a version).
+        type: string
+        default: stable
+      compile-command:
+        description: Replaces dart compile exe; runs in the package directory with ENTRYPOINT and OUTPUT set.
+        type: string
+        default: ''
+      compile-args:
+        description: Extra arguments for dart compile exe, such as --define=VERSION=1.0.0.
+        type: string
+        default: ''
+      archive:
+        description: zip or tar.gz.
+        type: string
+        default: zip
+      smoke-test-args:
+        description: Arguments the compiled binary is run with as a smoke test; empty skips it.
+        type: string
+        default: --version
+      artifact-prefix:
+        description: Prefix of the artifact names.
+        type: string
+        default: release-assets
+      runners:
+        description: JSON object of runner labels (linux, linux-arm, macos, macos-intel, windows, windows-arm).
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of every compile job.
+        type: number
+        default: 30
+      fail-fast:
+        description: Cancel the other targets when one fails.
+        type: boolean
+        default: false
+      harden-runner:
+        description: Run step-security/harden-runner first on Linux runners.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+      pre-setup:
+        description: Shell commands run before any tool is set up.
+        type: string
+        default: ''
+      post-setup:
+        description: Shell commands run after the dependencies are resolved.
+        type: string
+        default: ''
+      artifact-retention-days:
+        description: Days to keep the binaries.
+        type: number
+        default: 14
+      pub-hosted-url:
+        description: URL of a private package host; its token is the secret PUB_HOSTED_TOKEN.
+        type: string
+        default: ''
+      git-host:
+        description: Host of private git dependencies; its token is the secret GIT_DEPS_TOKEN.
+        type: string
+        default: github.com
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+
+    outputs:
+      matrix:
+        description: The compiled executables and targets, as a JSON matrix.
+        value: ${{ jobs.plan.outputs.matrix }}
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Discover the packages
+        id: discover
+        uses: $/actions/discover-packages
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          include: ${{ inputs.include }}
+          exclude: ${{ inputs.exclude }}
+          affected-only: 'false'
+
+      - name: Plan the builds
+        id: plan
+        uses: $/actions/plan-builds
+        with:
+          kind: dart-compile
+          discovery: ${{ steps.discover.outputs.discovery }}
+          targets: ${{ inputs.targets }}
+          executables: ${{ inputs.executables }}
+          runners: ${{ inputs.runners }}
+
+  compile:
+    name: Compile ${{ matrix.label }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner && runner.os == 'Linux'
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Dart
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: '[{"path": "${{ matrix.path }}", "workspace": ${{ matrix.workspace }}}]'
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Compile
+        id: compile
+        working-directory: ${{ inputs.working-directory }}/${{ matrix.path }}
+        shell: bash
+        env:
+          ENTRYPOINT: ${{ matrix.entrypoint }}
+          NAME: ${{ matrix.name }}
+          TARGET: ${{ matrix.target }}
+          COMMAND: ${{ inputs.compile-command }}
+          ARGS: ${{ inputs.compile-args }}
+          ARCHIVE: ${{ inputs.archive }}
+          SMOKE: ${{ inputs.smoke-test-args }}
+        run: |
+          out="$RUNNER_TEMP/davils-compile/$NAME-$TARGET"
+          mkdir -p "$out"
+          exe="$NAME"
+          [[ "$TARGET" == windows-* ]] && exe="$NAME.exe"
+          export OUTPUT="$out/$exe"
+          if [[ -n "$COMMAND" ]]; then
+            bash -euo pipefail -c "$COMMAND"
+          else
+            # shellcheck disable=SC2206
+            extra=($ARGS)
+            dart compile exe "${extra[@]}" "$ENTRYPOINT" -o "$OUTPUT"
+          fi
+          [[ -f "$OUTPUT" ]] || { echo "::error::The compile step wrote no $OUTPUT."; exit 1; }
+          if [[ -n "$SMOKE" ]]; then
+            # shellcheck disable=SC2086
+            "$OUTPUT" $SMOKE
+          fi
+          archive_dir="$RUNNER_TEMP/davils-assets/$NAME-$TARGET"
+          mkdir -p "$archive_dir"
+          if [[ "$ARCHIVE" == tar.gz ]]; then
+            file="$NAME-$TARGET.tar.gz"
+            tar -czf "$archive_dir/$file" -C "$out" .
+          elif [[ "$RUNNER_OS" == Windows ]]; then
+            file="$NAME-$TARGET.zip"
+            (cd "$out" && 7z a -tzip -bso0 "$archive_dir/$file" .)
+          else
+            file="$NAME-$TARGET.zip"
+            (cd "$out" && zip -qr "$archive_dir/$file" .)
+          fi
+          (cd "$archive_dir" && { sha256sum "$file" 2>/dev/null || shasum -a 256 "$file"; } >"$file.sha256")
+          echo "directory=$archive_dir" >>"$GITHUB_OUTPUT"
+          cat "$archive_dir/$file.sha256"
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact-prefix }}-${{ matrix.name }}-${{ matrix.target }}
+          path: ${{ steps.compile.outputs.directory }}/
+          retention-days: ${{ inputs.artifact-retention-days }}

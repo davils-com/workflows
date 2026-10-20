@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/davils-com/workflows/v1/schemas/davils-ci.schema.json
+#
+# A Flutter app: tests with golden files on macOS, the web build on Pages under /app/<name>/, and
+# signed builds for every platform on each push to main and each release tag.
+version: 1
+
+flutter:
+  versions: [stable]
+  version-file: .fvmrc
+  golden:
+    enabled: true
+    os: macos
+  integration-test:
+    enabled: true
+    device: linux
+
+build:
+  flutter:
+    targets:
+      web: true
+      apk: true
+      appbundle: true
+      ipa: true
+      macos: true
+      linux-x64: true
+      windows-x64: true
+    flavor: production
+    target-file: lib/main_production.dart
+    dart-define-from-file: config/production.json
+    obfuscate: true
+    macos-notarize: true
+    # The signing secrets live in this environment.
+    environment: signing
+
+pages:
+  layout:
+    web: /
+  spa-fallback: my_app
+
+release:
+  tag-patterns:
+    single: v{version}

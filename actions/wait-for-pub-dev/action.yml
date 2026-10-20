@@ -1,0 +1,39 @@
+name: Wait for sibling packages on pub.dev
+description: >-
+  Waits until the lowest version of every sibling package (a package of the same repository) that
+  a package depends on is on pub.dev, so the packages of a workspace can be released together.
+author: davils-com
+
+inputs:
+  package-path:
+    description: Directory of the package, relative to the repository root.
+    required: true
+  siblings:
+    description: JSON array of the names of the packages of the repository.
+    required: true
+  attempts:
+    description: How often to ask pub.dev.
+    required: false
+    default: '60'
+  interval:
+    description: Seconds between two attempts.
+    required: false
+    default: '30'
+  pub-url:
+    description: The package host.
+    required: false
+    default: https://pub.dev
+
+runs:
+  using: composite
+  steps:
+    - name: Wait for the siblings
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        SIBLINGS: ${{ inputs.siblings }}
+        ATTEMPTS: ${{ inputs.attempts }}
+        INTERVAL: ${{ inputs.interval }}
+        PUB_URL: ${{ inputs.pub-url }}
+      run: bash "$ACTION_PATH/scripts/wait.sh"

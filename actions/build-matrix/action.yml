@@ -1,0 +1,93 @@
+name: Build a job matrix
+description: >-
+  Builds a job matrix from discovered packages: one job per package, one for all, or the packages
+  spread over shards, each times SDKs and operating systems. A job with an empty matrix fails, so
+  check the count before using the matrix.
+author: davils-com
+
+inputs:
+  discovery:
+    description: Output of discover-packages.
+    required: true
+  affected:
+    description: The affected output of discover-packages; empty uses every package.
+    required: false
+    default: ''
+  toolchain:
+    description: dart, flutter or all.
+    required: false
+    default: all
+  select:
+    description: all, tests, publishable, apps, executables or inspectra.
+    required: false
+    default: all
+  sdks:
+    description: JSON array of SDKs (stable, beta, lowest or a version; Flutter versions for flutter).
+    required: false
+    default: '["stable"]'
+  os:
+    description: JSON array of operating systems (ubuntu, ubuntu-arm, macos, windows, windows-arm).
+    required: false
+    default: '["ubuntu"]'
+  extra-os-sdk:
+    description: first (other operating systems only get the first SDK) or all.
+    required: false
+    default: first
+  granularity:
+    description: auto, package, workspace or shards.
+    required: false
+    default: auto
+  shards:
+    description: Number of shards.
+    required: false
+    default: '8'
+  shard-threshold:
+    description: Package count from which auto shards.
+    required: false
+    default: '20'
+  runners:
+    description: JSON object of runner labels (linux, linux-arm, macos, windows, windows-arm).
+    required: false
+    default: '{}'
+
+outputs:
+  matrix:
+    description: The matrix as JSON ({"include":[...]}); every entry has id, label, packages, paths, workspace, os, runner, sdk, sdk_label and primary.
+    value: ${{ steps.build.outputs.matrix }}
+  count:
+    description: The number of matrix entries.
+    value: ${{ steps.build.outputs.count }}
+  packages:
+    description: Every selected package, as a JSON array.
+    value: ${{ steps.build.outputs.packages }}
+  package-count:
+    description: The number of selected packages.
+    value: ${{ steps.build.outputs.package-count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build the matrix
+      id: build
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        DISCOVERY: ${{ inputs.discovery }}
+        AFFECTED: ${{ inputs.affected }}
+        TOOLCHAIN: ${{ inputs.toolchain }}
+        SELECT: ${{ inputs.select }}
+        SDKS: ${{ inputs.sdks }}
+        OS: ${{ inputs.os }}
+        EXTRA_OS_SDK: ${{ inputs.extra-os-sdk }}
+        GRANULARITY: ${{ inputs.granularity }}
+        SHARDS: ${{ inputs.shards }}
+        SHARD_THRESHOLD: ${{ inputs.shard-threshold }}
+        RUNNERS: ${{ inputs.runners }}
+      run: |
+        source "$ACTION_PATH/../_lib/common.sh"
+        result="$(bash "$ACTION_PATH/scripts/matrix.sh")"
+        set_output matrix "$(jq -c '{include}' <<<"$result")"
+        set_output count "$(jq -r '.count' <<<"$result")"
+        set_output packages "$(jq -c '.packages' <<<"$result")"
+        set_output package-count "$(jq -r '.packages | length' <<<"$result")"
+        echo "$(jq -r '.count' <<<"$result") jobs ($(jq -r '.granularity' <<<"$result")) for $(jq -r '.packages | length' <<<"$result") packages."

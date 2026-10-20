@@ -1,0 +1,327 @@
+# The defaults of every option of .github/davils-ci.yaml. A repository only writes what differs.
+#
+# Precedence, lowest first: these defaults, the preset, .github/davils-ci.yaml, the `config` input
+# of pipeline.yml, the typed inputs of pipeline.yml. Mappings merge key by key, lists replace.
+#
+# Toggles take true, false or auto. auto turns a feature on when the repository has what it needs:
+# a Dart package for dart, a writerside.cfg for writerside, an app for the Flutter builds.
+#
+# Every feature has `when`: the events it runs on (push is a branch push, tag a tag push), the
+# branches (globs, for push events; empty means all) and the paths (globs relative to the working
+# directory, for pull_request, merge_group and push events; empty means any change).
+version: 1
+
+project:
+  working-directory: .
+  release-branch: main
+  integration-branch: develop
+
+packages:
+  include: []
+  exclude: []
+  external-path-dependencies: error
+  affected-only: auto
+  always-all-paths:
+    - pubspec.yaml
+    - pubspec.lock
+    - analysis_options.yaml
+    - dart_test.yaml
+    - inspectra.yaml
+    - inspectra.base.yaml
+    - trivy*.yaml
+    - tool/**
+    - .github/**
+  granularity: auto
+  shards: 8
+  shard-threshold: 20
+
+dart:
+  enabled: auto
+  sdks: [stable, lowest]
+  os: [ubuntu]
+  format:
+    enabled: true
+    command: ''
+  analyze:
+    enabled: true
+    fatal-infos: true
+    command: ''
+  test:
+    enabled: true
+    platforms: []
+    command: ''
+    args: ''
+    report: false
+  coverage:
+    enabled: true
+    source: auto
+    min: 0
+    codecov: false
+  build-runner:
+    enabled: auto
+    command: ''
+  publish-dry-run:
+    enabled: auto
+  pana:
+    enabled: false
+    min-points: 0
+  downgrade:
+    enabled: false
+  when:
+    events: [push, pull_request, merge_group, schedule, workflow_dispatch]
+    branches: []
+    paths: []
+
+flutter:
+  enabled: auto
+  channel: stable
+  versions: [stable]
+  version-file: ''
+  os: [ubuntu]
+  format:
+    enabled: true
+    command: ''
+  analyze:
+    enabled: true
+    fatal-infos: true
+    command: ''
+  test:
+    enabled: true
+    command: ''
+    args: ''
+    exclude-tags: ''
+    report: false
+  coverage:
+    enabled: true
+    source: auto
+    min: 0
+    codecov: false
+  build-runner:
+    enabled: auto
+    command: ''
+  publish-dry-run:
+    enabled: auto
+  golden:
+    enabled: false
+    os: macos
+    tags: golden
+  integration-test:
+    enabled: false
+    device: auto
+  l10n:
+    enabled: auto
+  when:
+    events: [push, pull_request, merge_group, schedule, workflow_dispatch]
+    branches: []
+    paths: []
+
+inspectra:
+  enabled: auto
+  install: auto
+  version: latest
+  config-file: ''
+  profile: ''
+  check:
+    enabled: true
+    root: auto
+  scan:
+    enabled: true
+    recursive: true
+    fail-on: high
+    min-severity: ''
+  sarif:
+    enabled: auto
+    category: inspectra
+  summary:
+    enabled: true
+  report:
+    enabled: auto
+  config-lint:
+    enabled: true
+  config-diff:
+    enabled: auto
+  trivy:
+    mode: ''
+    version: ''
+    cache: true
+  offline: false
+  tolerate-incomplete: false
+  when:
+    events: [push, pull_request, merge_group, schedule, workflow_dispatch]
+    branches: []
+    paths: []
+
+writerside:
+  enabled: auto
+  instances: []
+  builder: docker
+  builder-image: jetbrains/writerside-builder
+  builder-version: '2026.09.0357'
+  checker:
+    enabled: true
+  pdf: ''
+  algolia:
+    enabled: false
+    app-name: ''
+    index: ''
+  when:
+    events: [push, pull_request, merge_group, workflow_dispatch]
+    branches: []
+    paths: []
+
+dartdoc:
+  enabled: auto
+  publishable-only: true
+  validate-links: true
+  fail-on-warnings: false
+  dry-run-on-pr: true
+  args: ''
+  when:
+    events: [push, pull_request, merge_group, workflow_dispatch]
+    branches: []
+    paths: []
+
+pages:
+  enabled: auto
+  deploy: true
+  parts:
+    docs: true
+    api: true
+    web: true
+    coverage: false
+    inspectra: false
+  layout:
+    docs: /
+    api: /api
+    web: /app/{id}
+    coverage: /coverage/{id}
+    inspectra: /quality
+  landing-page: auto
+  cname: ''
+  spa-fallback: ''
+  extra-path: ''
+  environment: github-pages
+  when:
+    events: [push, workflow_dispatch]
+    branches: [main]
+    paths: []
+
+build:
+  flutter:
+    enabled: auto
+    apps: []
+    targets:
+      web: auto
+      apk: false
+      appbundle: false
+      ios: false
+      ipa: false
+      macos: false
+      linux-x64: false
+      linux-arm64: false
+      windows-x64: false
+      windows-arm64: false
+    build-mode: release
+    flavor: ''
+    target-file: ''
+    dart-define-from-file: ''
+    extra-args: ''
+    build-name: pubspec
+    build-number: run-number
+    obfuscate: false
+    web-wasm: false
+    android-signing: auto
+    apple-signing: auto
+    macos-notarize: false
+    java-version: '17'
+    environment: ''
+    when:
+      events: [push, workflow_dispatch]
+      branches: [main]
+      paths: []
+  dart-compile:
+    enabled: auto
+    executables: []
+    targets: [linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64]
+    archive: zip
+    checksums: true
+    smoke-test-args: --version
+    when:
+      events: [push, workflow_dispatch]
+      branches: [main]
+      paths: []
+
+release:
+  mode: auto
+  tag-patterns:
+    single: v{version}
+    package: '{package}-v{version}'
+  verify:
+    enabled: true
+    on-branch: main
+  pub:
+    enabled: auto
+    environment: pub.dev
+    wait-for-siblings: true
+    wait-attempts: 60
+    wait-interval: 30
+  github:
+    enabled: true
+    notes-source: auto
+    attest: true
+    checksums: true
+    draft: false
+    make-latest: auto
+  release-please:
+    token-source: app
+    config-file: release-please-config.json
+    manifest-file: .release-please-manifest.json
+    dispatch-workflow: ''
+    back-merge: false
+
+pr:
+  title:
+    enabled: true
+    types: []
+    scopes: []
+    require-scope: false
+    subject-pattern: ''
+  branch-policy:
+    enabled: true
+    main-allowed-sources: [develop, release-please--*, hotfix/*]
+  when:
+    events: [pull_request]
+    branches: []
+    paths: []
+
+security:
+  harden-runner:
+    enabled: true
+    egress-policy: audit
+    allowed-endpoints: ''
+
+hooks:
+  pre-setup: ''
+  post-setup: ''
+  pre-test: ''
+  post-test: ''
+  pre-publish: ''
+
+runners:
+  linux: ubuntu-latest
+  linux-arm: ubuntu-24.04-arm
+  macos: macos-latest
+  macos-intel: macos-15-intel
+  windows: windows-latest
+  windows-arm: windows-11-arm
+
+timeouts:
+  ci: 45
+  inspectra: 30
+  docs: 20
+  build: 60
+  publish: 45
+  release: 20
+
+artifacts:
+  retention-days: 7

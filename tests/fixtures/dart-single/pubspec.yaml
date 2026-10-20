@@ -1,0 +1,13 @@
+name: davils_ci_single
+description: A single Dart package that the self-tests of davils-com/workflows run against.
+version: 1.2.3
+repository: https://github.com/davils-com/workflows
+
+environment:
+  sdk: ^3.13.5
+
+executables:
+  single: single
+
+dev_dependencies:
+  test: ^1.26.0

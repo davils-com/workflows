@@ -1,0 +1,40 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+    paths: ['docs/**', 'lib/**']
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  writerside:
+    name: Writerside
+    uses: davils-com/workflows/.github/workflows/writerside.yml@v1
+    permissions:
+      contents: read
+    with:
+      instances: '["docs/d"]'
+
+  dartdoc:
+    name: API documentation
+    uses: davils-com/workflows/.github/workflows/dartdoc.yml@v1
+    permissions:
+      contents: read
+
+  pages:
+    name: GitHub Pages
+    needs: [writerside, dartdoc]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    uses: davils-com/workflows/.github/workflows/pages.yml@v1
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

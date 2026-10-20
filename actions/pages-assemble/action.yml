@@ -1,0 +1,76 @@
+name: Assemble the Pages site
+description: >-
+  Downloads every davils-pages-* artifact of the run (Writerside docs, API docs, Flutter web
+  builds, coverage and quality reports), places each at its path of the layout, rewrites the base
+  href of Flutter web builds, adds a landing page and uploads the site for actions/deploy-pages.
+author: davils-com
+
+inputs:
+  layout:
+    description: JSON object mapping a part (docs, api, web, coverage, inspectra) to its path; {id} is the id of the part.
+    required: false
+    default: '{"docs":"/","api":"/api","web":"/app/{id}","coverage":"/coverage/{id}","inspectra":"/quality"}'
+  base-path:
+    description: Base path of the site (the base_path output of actions/configure-pages).
+    required: false
+    default: ''
+  landing-page:
+    description: auto (when no part provides /index.html), true or false.
+    required: false
+    default: auto
+  cname:
+    description: Custom domain of the site.
+    required: false
+    default: ''
+  spa-fallback:
+    description: Id of a web part whose index.html also serves as 404.html, for client side routing.
+    required: false
+    default: ''
+  extra-path:
+    description: Directory of the repository copied into the site root.
+    required: false
+    default: ''
+  title:
+    description: Title of the landing page.
+    required: false
+    default: ''
+  artifact-pattern:
+    description: Pattern of the artifacts with parts.
+    required: false
+    default: davils-pages-*
+
+outputs:
+  parts:
+    description: The placed parts, as JSON.
+    value: ${{ steps.assemble.outputs.parts }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download the parts
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: ${{ inputs.artifact-pattern }}
+        path: ${{ runner.temp }}/davils-pages-parts
+
+    - name: Assemble the site
+      id: assemble
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        IN_DIR: ${{ runner.temp }}/davils-pages-parts
+        OUT_DIR: ${{ runner.temp }}/davils-pages-site
+        LAYOUT: ${{ inputs.layout }}
+        BASE_PATH: ${{ inputs.base-path }}
+        LANDING_PAGE: ${{ inputs.landing-page }}
+        CNAME: ${{ inputs.cname }}
+        SPA_FALLBACK: ${{ inputs.spa-fallback }}
+        EXTRA_PATH: ${{ inputs.extra-path }}
+        TITLE: ${{ inputs.title || github.event.repository.name }}
+      run: bash "$ACTION_PATH/scripts/assemble.sh"
+
+    - name: Upload the site
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      with:
+        path: ${{ runner.temp }}/davils-pages-site
+        include-hidden-files: true

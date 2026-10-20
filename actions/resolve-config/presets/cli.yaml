@@ -1,0 +1,11 @@
+# A command line tool: tested on every operating system, native binaries attached to each release.
+dart:
+  os: [ubuntu, macos, windows]
+build:
+  dart-compile:
+    enabled: true
+    when:
+      events: [push, workflow_dispatch]
+      branches: [main]
+release:
+  mode: tag

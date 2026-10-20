@@ -1,0 +1,37 @@
+name: Self docs
+
+# The documentation of this repository, built with its own workflows and deployed to its Pages
+# site on pushes to main.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+    paths: ['docs/**', '.github/workflows/writerside.yml', '.github/workflows/pages.yml', 'actions/writerside-build/**', 'actions/pages-assemble/**']
+  workflow_dispatch:
+
+concurrency:
+  group: self-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  writerside:
+    name: Writerside
+    uses: $/.github/workflows/writerside.yml
+    permissions:
+      contents: read
+    with:
+      instances: '["docs/w"]'
+
+  pages:
+    name: GitHub Pages
+    needs: writerside
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    uses: $/.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

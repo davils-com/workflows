@@ -1,0 +1,15 @@
+# A Flutter application: the web build on Pages, Android and desktop builds as artifacts.
+dartdoc:
+  enabled: false
+build:
+  flutter:
+    enabled: true
+    targets:
+      web: true
+      apk: true
+      linux-x64: true
+      windows-x64: true
+      macos: true
+release:
+  pub:
+    enabled: false

@@ -1,0 +1,129 @@
+name: Resolve the configuration
+description: >-
+  Merges the defaults, a preset, .github/davils-ci.yaml, inline configuration and typed overrides,
+  validates the result, discovers the packages and decides which features run for this event.
+author: davils-com
+
+inputs:
+  config-file:
+    description: Path of the configuration file relative to the repository root. Empty means .github/davils-ci.yaml when it exists; none ignores any file.
+    required: false
+    default: ''
+  config:
+    description: Inline configuration as YAML or JSON; it wins over the file.
+    required: false
+    default: ''
+  preset:
+    description: library, workspace, flutter-app, cli or docs; applied below the file.
+    required: false
+    default: ''
+  overrides:
+    description: JSON object of options that win over everything else (pipeline.yml builds it from its typed inputs).
+    required: false
+    default: '{}'
+  working-directory:
+    description: Overrides project.working-directory.
+    required: false
+    default: ''
+  validate:
+    description: Fail on unknown options and wrong types.
+    required: false
+    default: 'true'
+  base-sha:
+    description: The commit to compare with for affected packages and path filters.
+    required: false
+    default: ''
+  base-ref:
+    description: The target branch of a pull request or merge group.
+    required: false
+    default: ''
+  is-fork:
+    description: true when the event comes from a fork; SARIF uploads and checks are then skipped.
+    required: false
+    default: 'false'
+
+outputs:
+  config:
+    description: The resolved configuration as JSON; every auto toggle is true or false.
+    value: ${{ steps.resolve.outputs.config }}
+  run:
+    description: JSON object telling which features run for this event.
+    value: ${{ steps.resolve.outputs.run }}
+  event:
+    description: JSON object with the event, the branch and a parsed release tag.
+    value: ${{ steps.resolve.outputs.event }}
+  discovery:
+    description: Every package with its metadata, as JSON.
+    value: ${{ steps.resolve.outputs.discovery }}
+  affected:
+    description: The affected packages and the changed files, as JSON.
+    value: ${{ steps.resolve.outputs.affected }}
+  working-directory:
+    description: The resolved working directory.
+    value: ${{ steps.resolve.outputs.working-directory }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the configuration
+      id: resolve
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CONFIG_FILE: ${{ inputs.config-file }}
+        CONFIG_INLINE: ${{ inputs.config }}
+        PRESET: ${{ inputs.preset }}
+        OVERRIDES: ${{ inputs.overrides }}
+        VALIDATE: ${{ inputs.validate }}
+        WORKING_DIRECTORY_INPUT: ${{ inputs.working-directory }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        BASE_REF: ${{ inputs.base-ref }}
+        IS_FORK: ${{ inputs.is-fork }}
+        EVENT_NAME: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+        REF_NAME: ${{ github.ref_name }}
+      run: |
+        source "$ACTION_PATH/../_lib/common.sh"
+        scripts="$ACTION_PATH/scripts"
+        discover="$ACTION_PATH/../discover-packages/scripts"
+
+        config="$(bash "$scripts/merge.sh")"
+        working_directory="${WORKING_DIRECTORY_INPUT:-$(jq -r '.project["working-directory"]' <<<"$config")}"
+        [[ -z "$working_directory" ]] && working_directory=.
+        [[ -d "$working_directory" ]] || die "The working directory '$working_directory' does not exist."
+        config="$(jq -c --arg wd "$working_directory" '.project["working-directory"] = $wd' <<<"$config")"
+
+        pushd "$working_directory" >/dev/null
+        discovery="$(
+          ROOT=. \
+          INCLUDE="$(jq -c '.packages.include' <<<"$config")" \
+          EXCLUDE="$(jq -c '.packages.exclude' <<<"$config")" \
+          EXTERNAL_PATH_DEPS="$(jq -r '.packages["external-path-dependencies"]' <<<"$config")" \
+          bash "$discover/discover.sh"
+        )"
+        discovery="$(jq -c --arg root "$working_directory" '.root = $root' <<<"$discovery")"
+        affected="$(
+          DISCOVERY="$discovery" ROOT="$working_directory" \
+          MODE="$(jq -r '.packages["affected-only"]' <<<"$config")" \
+          ALWAYS_ALL_PATHS="$(jq -c '.packages["always-all-paths"]' <<<"$config")" \
+          bash "$discover/affected.sh"
+        )"
+        result="$(CONFIG="$config" DISCOVERY="$discovery" AFFECTED="$affected" bash "$scripts/evaluate.sh")"
+        popd >/dev/null
+
+        set_output config "$(jq -c '.config' <<<"$result")"
+        set_output run "$(jq -c '.run' <<<"$result")"
+        set_output event "$(jq -c '.event' <<<"$result")"
+        set_output discovery "$discovery"
+        set_output affected "$affected"
+        set_output working-directory "$working_directory"
+
+        {
+          echo "### davils-ci"
+          echo
+          echo "Event \`$(jq -r '.event.name' <<<"$result")\`, $(jq -r '.summary.count' <<<"$discovery") packages, $(jq -r '.mode' <<<"$affected") packages checked."
+          echo
+          echo "| Feature | Runs |"
+          echo "|---|---|"
+          jq -r '.run | to_entries[] | "| \(.key) | \(if .value then "yes" else "no" end) |"' <<<"$result"
+        } >>"${GITHUB_STEP_SUMMARY:-/dev/null}"

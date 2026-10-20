@@ -1,0 +1,262 @@
+name: API documentation
+
+# Generates the API documentation of the packages with dart doc. On pull requests it only checks
+# that the documentation builds; otherwise it hands the HTML to pages.yml as the part api: one
+# package at the root of the part, several packages in subdirectories with an index page.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before (pipeline.yml passes its own); empty discovers them here.
+        type: string
+        default: ''
+      include:
+        description: Globs of package directories outside the workspace.
+        type: string
+        default: ''
+      exclude:
+        description: Globs of package directories to leave out.
+        type: string
+        default: ''
+      publishable-only:
+        description: Only document packages that are published (no publish_to none).
+        type: boolean
+        default: true
+      validate-links:
+        description: Report broken links as warnings (not on dry runs); with fail-on-warnings they fail the job.
+        type: boolean
+        default: true
+      fail-on-warnings:
+        description: Fail when dart doc warns.
+        type: boolean
+        default: false
+      dry-run-on-pr:
+        description: On pull requests only check that the documentation builds.
+        type: boolean
+        default: true
+      args:
+        description: Extra arguments for dart doc.
+        type: string
+        default: ''
+      title:
+        description: Title of the index page for several packages; empty uses the repository name.
+        type: string
+        default: ''
+      pages-part-enabled:
+        description: Hand the documentation to pages.yml as the part api.
+        type: boolean
+        default: true
+      sdk:
+        description: Dart SDK (stable, beta or a version).
+        type: string
+        default: stable
+      flutter-version:
+        description: Flutter version, used when a documented package is a Flutter package.
+        type: string
+        default: stable
+      runners:
+        description: JSON object of runner labels.
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of the job.
+        type: number
+        default: 20
+      harden-runner:
+        description: Run step-security/harden-runner first.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+      pre-setup:
+        description: Shell commands run before any tool is set up.
+        type: string
+        default: ''
+      post-setup:
+        description: Shell commands run after the dependencies are resolved.
+        type: string
+        default: ''
+      artifact-retention-days:
+        description: Days to keep the artifact.
+        type: number
+        default: 7
+      pub-hosted-url:
+        description: URL of a private package host; its token is the secret PUB_HOSTED_TOKEN.
+        type: string
+        default: ''
+      git-host:
+        description: Host of private git dependencies; its token is the secret GIT_DEPS_TOKEN.
+        type: string
+        default: github.com
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+
+permissions: {}
+
+jobs:
+  doc:
+    name: dart doc
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Discover the packages
+        id: discover
+        uses: $/actions/discover-packages
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          include: ${{ inputs.include }}
+          exclude: ${{ inputs.exclude }}
+          affected-only: 'false'
+
+      - name: Select the packages
+        id: select
+        uses: $/actions/build-matrix
+        with:
+          discovery: ${{ steps.discover.outputs.discovery }}
+          select: ${{ inputs.publishable-only && 'publishable' || 'all' }}
+          granularity: workspace
+
+      - name: Pick the toolchain
+        id: toolchain
+        shell: bash
+        env:
+          PACKAGES: ${{ steps.select.outputs.packages }}
+        run: echo "toolchain=$(jq -r 'if any(.[]; .toolchain == "flutter") then "flutter" else "dart" end' <<<"$PACKAGES")" >>"$GITHUB_OUTPUT"
+
+      - name: Set up Dart
+        if: steps.select.outputs.package-count != '0' && steps.toolchain.outputs.toolchain == 'dart'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ steps.select.outputs.packages }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Flutter
+        if: steps.select.outputs.package-count != '0' && steps.toolchain.outputs.toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ inputs.flutter-version }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ steps.select.outputs.packages }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Generate the documentation
+        if: steps.select.outputs.package-count != '0'
+        id: doc
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          PACKAGES: ${{ steps.select.outputs.packages }}
+          DRY_RUN: ${{ inputs.dry-run-on-pr && github.event_name == 'pull_request' }}
+          VALIDATE_LINKS: ${{ inputs.validate-links }}
+          FAIL_ON_WARNINGS: ${{ inputs.fail-on-warnings }}
+          ARGS: ${{ inputs.args }}
+          TITLE: ${{ inputs.title || github.event.repository.name }}
+        run: |
+          out="$RUNNER_TEMP/davils-api"
+          mkdir -p "$out"
+          count="$(jq 'length' <<<"$PACKAGES")"
+          failed=()
+          while IFS= read -r package; do
+            name="$(jq -r '.name' <<<"$package")"
+            path="$(jq -r '.path' <<<"$package")"
+            target="$out"
+            ((count > 1)) && target="$out/$name"
+            options=()
+            if [[ "$DRY_RUN" == true ]]; then
+              options+=(--dry-run)
+            else
+              options+=(--output "$target")
+              # dart doc refuses --validate-links together with --dry-run.
+              [[ "$VALIDATE_LINKS" == true ]] && options+=(--validate-links)
+            fi
+            # shellcheck disable=SC2206
+            [[ -n "$ARGS" ]] && options+=($ARGS)
+            echo "::group::dart doc $name"
+            log="$RUNNER_TEMP/dartdoc-$name.log"
+            status=0
+            (cd "$path" && dart doc "${options[@]}" .) 2>&1 | tee "$log" || status=$?
+            echo "::endgroup::"
+            if ((status != 0)); then
+              failed+=("$name")
+            elif [[ "$FAIL_ON_WARNINGS" == true ]] && grep -qiE '^ *warning:' "$log"; then
+              echo "::error::dart doc warned for $name."
+              failed+=("$name")
+            fi
+          done < <(jq -c '.[]' <<<"$PACKAGES")
+          if ((${#failed[@]} > 0)); then
+            echo "::error::dart doc failed for: ${failed[*]}."
+            exit 1
+          fi
+          if [[ "$DRY_RUN" != true ]]; then
+            if ((count > 1)); then
+              {
+                echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+                echo '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                printf '<title>%s API</title>\n' "$TITLE"
+                echo '<style>body{font-family:system-ui,sans-serif;max-width:46rem;margin:3rem auto;padding:0 1rem;line-height:1.5}a{color:#0b6bcb}li{margin:.4rem 0}</style>'
+                printf '</head><body><h1>%s API</h1><ul>\n' "$TITLE"
+                jq -r '.[] | "<li><a href=\"\(.name)/\">\(.name)</a> \(.version)</li>"' <<<"$PACKAGES"
+                echo '</ul></body></html>'
+              } >"$out/index.html"
+            fi
+            jq -cn '{part: "api", id: "api"}' >"$out/.davils-part.json"
+            echo "directory=$out" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload the Pages part
+        if: inputs.pages-part-enabled && steps.doc.outputs.directory != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-pages-api
+          path: ${{ steps.doc.outputs.directory }}/
+          include-hidden-files: true
+          retention-days: ${{ inputs.artifact-retention-days }}

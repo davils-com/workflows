@@ -1,0 +1,50 @@
+name: Collect coverage
+description: >-
+  Merges the lcov files of several packages, writes the coverage per package to the job summary,
+  enforces a minimum and renders an HTML report.
+author: davils-com
+
+inputs:
+  input-directory:
+    description: Directory with <package>.lcov files.
+    required: true
+  output-directory:
+    description: Directory for lcov.info, summary.md and html/.
+    required: false
+    default: ''
+  min:
+    description: Minimum total line coverage in percent; 0 disables the check.
+    required: false
+    default: '0'
+  html:
+    description: Render an HTML report with genhtml.
+    required: false
+    default: 'false'
+
+outputs:
+  percent:
+    description: The total line coverage in percent; empty when nothing was collected.
+    value: ${{ steps.collect.outputs.percent }}
+  lcov:
+    description: Path of the merged lcov.info.
+    value: ${{ steps.collect.outputs.lcov }}
+  output-directory:
+    description: The output directory.
+    value: ${{ steps.collect.outputs.output-directory }}
+
+runs:
+  using: composite
+  steps:
+    - name: Collect the coverage
+      id: collect
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        IN_DIR: ${{ inputs.input-directory }}
+        OUT_DIR_INPUT: ${{ inputs.output-directory }}
+        MIN: ${{ inputs.min }}
+        HTML: ${{ inputs.html }}
+      run: |
+        export OUT_DIR="${OUT_DIR_INPUT:-$RUNNER_TEMP/davils-coverage}"
+        echo "output-directory=$OUT_DIR" >>"$GITHUB_OUTPUT"
+        bash "$ACTION_PATH/scripts/collect.sh"

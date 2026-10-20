@@ -1,0 +1,110 @@
+name: Test packages
+description: >-
+  Runs the tests of several Dart or Flutter packages, on the given platforms and compilers,
+  collects their coverage with repository relative paths and their JSON test reports. A failing
+  package does not stop the others.
+author: davils-com
+
+inputs:
+  tool:
+    description: dart or flutter.
+    required: false
+    default: dart
+  packages:
+    description: JSON array of packages ({name, path, has_tests}), paths relative to the working directory.
+    required: true
+  working-directory:
+    description: Directory of the root pubspec.yaml, relative to the repository root.
+    required: false
+    default: .
+  platforms:
+    description: JSON array for dart test (vm, chrome, chrome:dart2wasm, ...); empty uses dart_test.yaml.
+    required: false
+    default: ''
+  command:
+    description: Replaces the test command; runs in each package directory with PACKAGE_NAME and PACKAGE_PATH set.
+    required: false
+    default: ''
+  args:
+    description: Extra arguments for the test command.
+    required: false
+    default: ''
+  exclude-tags:
+    description: Tags to skip.
+    required: false
+    default: ''
+  coverage:
+    description: Collect coverage.
+    required: false
+    default: 'false'
+  coverage-source:
+    description: auto, dart-ci, flutter-ci, inspectra or none.
+    required: false
+    default: auto
+  inspectra-enabled:
+    description: true when the inspectra workflow runs in the same pipeline.
+    required: false
+    default: 'false'
+  report:
+    description: Write JSON test reports.
+    required: false
+    default: 'false'
+  output-directory:
+    description: Where coverage (coverage/<package>.lcov) and reports (reports/<package>.json) are collected.
+    required: false
+    default: ''
+  pre-test:
+    description: Shell commands run before the tests.
+    required: false
+    default: ''
+  post-test:
+    description: Shell commands run after the tests, also when they failed.
+    required: false
+    default: ''
+
+outputs:
+  output-directory:
+    description: The directory with coverage/ and reports/.
+    value: ${{ steps.test.outputs.output-directory }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run the pre-test hook
+      if: inputs.pre-test != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HOOK: ${{ inputs.pre-test }}
+      run: bash -euo pipefail -c "$HOOK"
+
+    - name: Test
+      id: test
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        TOOL: ${{ inputs.tool }}
+        PACKAGES: ${{ inputs.packages }}
+        PLATFORMS: ${{ inputs.platforms }}
+        COMMAND: ${{ inputs.command }}
+        ARGS: ${{ inputs.args }}
+        EXCLUDE_TAGS: ${{ inputs.exclude-tags }}
+        COVERAGE: ${{ inputs.coverage }}
+        COVERAGE_SOURCE: ${{ inputs.coverage-source }}
+        INSPECTRA_ENABLED: ${{ inputs.inspectra-enabled }}
+        REPORT: ${{ inputs.report }}
+        OUT_DIR_INPUT: ${{ inputs.output-directory }}
+        REPO_PREFIX: ${{ inputs.working-directory }}
+      run: |
+        export OUT_DIR="${OUT_DIR_INPUT:-$RUNNER_TEMP/davils-tests}"
+        echo "output-directory=$OUT_DIR" >>"$GITHUB_OUTPUT"
+        bash "$ACTION_PATH/scripts/test.sh"
+
+    - name: Run the post-test hook
+      if: always() && inputs.post-test != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HOOK: ${{ inputs.post-test }}
+      run: bash -euo pipefail -c "$HOOK"

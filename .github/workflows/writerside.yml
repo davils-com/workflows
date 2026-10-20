@@ -1,0 +1,282 @@
+name: Writerside
+
+# Builds and checks Writerside documentation, one job per instance, and hands the web help to
+# pages.yml as a part of the GitHub Pages site. It deploys nothing itself: a repository has one
+# Pages site, and pages.yml assembles it from every part of the run.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory the instances are relative to, relative to the repository root.
+        type: string
+        default: .
+      instances:
+        description: JSON array of instances (module directory and instance id), such as ["docs/d"]; empty finds them from every writerside.cfg.
+        type: string
+        default: ''
+      builder:
+        description: docker (JetBrains' builder image directly) or action (JetBrains/writerside-github-action).
+        type: string
+        default: docker
+      builder-image:
+        description: The builder image without tag.
+        type: string
+        default: jetbrains/writerside-builder
+      builder-version:
+        description: Tag of the builder image.
+        type: string
+        default: '2026.09.0357'
+      checker-enabled:
+        description: Fail on the errors the build reports (broken links, unknown topics) with JetBrains/writerside-checker-action.
+        type: boolean
+        default: true
+      pdf:
+        description: Name of a PDF export settings file (such as PDF.xml); the PDF becomes part of the artifact.
+        type: string
+        default: ''
+      algolia-enabled:
+        description: Publish the search index to Algolia (secret ALGOLIA_KEY).
+        type: boolean
+        default: false
+      algolia-app-name:
+        description: Algolia application id.
+        type: string
+        default: ''
+      algolia-index:
+        description: Algolia index name.
+        type: string
+        default: ''
+      algolia-publisher-image:
+        description: JetBrains' Algolia publisher image; pin it by digest with image@sha256:<digest>.
+        type: string
+        default: registry.jetbrains.team/p/writerside/builder/algolia-publisher:2.0.32-3
+      pages-part-enabled:
+        description: Hand the web help to pages.yml as the part docs.
+        type: boolean
+        default: true
+      runners:
+        description: JSON object of runner labels; Writerside builds on linux.
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of every job.
+        type: number
+        default: 20
+      harden-runner:
+        description: Run step-security/harden-runner first.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+      pre-setup:
+        description: Shell commands run before the build.
+        type: string
+        default: ''
+      artifact-retention-days:
+        description: Days to keep the artifacts.
+        type: number
+        default: 7
+
+    secrets:
+      ALGOLIA_KEY:
+        required: false
+
+    outputs:
+      instances:
+        description: The built instances as a JSON array.
+        value: ${{ jobs.plan.outputs.instances }}
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+
+    outputs:
+      instances: ${{ steps.find.outputs.instances }}
+      count: ${{ steps.find.outputs.count }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # <module dir>/<instance id> of every instance of every writerside.cfg, the id read from the
+      # instance profile of its tree.
+      - name: Find the instances
+        id: find
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          INSTANCES: ${{ inputs.instances }}
+        run: |
+          if [[ -n "$INSTANCES" && "$INSTANCES" != '[]' ]]; then
+            instances="$(jq -c . <<<"$INSTANCES")"
+          else
+            instances='[]'
+            while IFS= read -r cfg; do
+              module="$(dirname "$cfg")"
+              module="${module#./}"
+              while IFS= read -r tree; do
+                [[ -z "$tree" ]] && continue
+                id="$(grep -o '<instance-profile[^>]*id="[^"]*"' "$module/$tree" | sed -E 's/.*id="([^"]*)".*/\1/' | head -1 || true)"
+                [[ -z "$id" ]] && id="$(basename "$tree" .tree)"
+                instances="$(jq -c --arg i "$module/$id" '. + [$i]' <<<"$instances")"
+              done < <(grep -o '<instance[^-][^>]*src="[^"]*"' "$cfg" | sed -E 's/.*src="([^"]*)".*/\1/' || true)
+            done < <(find . -maxdepth 4 -name writerside.cfg -not -path '*/node_modules/*' | sort)
+          fi
+          echo "instances=$instances" >>"$GITHUB_OUTPUT"
+          echo "count=$(jq 'length' <<<"$instances")" >>"$GITHUB_OUTPUT"
+          echo "Instances: $instances"
+
+  build:
+    name: Build ${{ matrix.instance }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        instance: ${{ fromJSON(needs.plan.outputs.instances) }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      # Writerside shows the date of the last change of every topic, so it needs the history.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Build the documentation
+        id: build
+        uses: $/actions/writerside-build
+        with:
+          instance: ${{ matrix.instance }}
+          location: ${{ inputs.working-directory }}
+          builder: ${{ inputs.builder }}
+          image: ${{ inputs.builder-image }}
+          version: ${{ inputs.builder-version }}
+          pdf: ${{ inputs.pdf }}
+
+      - name: Upload the build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: writerside-${{ steps.build.outputs.id }}
+          path: ${{ steps.build.outputs.directory }}/
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      # The checker reads artifacts/report.json at the root of the workspace.
+      - name: Put the report where the checker reads it
+        if: inputs.checker-enabled && steps.build.outputs.directory != 'artifacts'
+        shell: bash
+        env:
+          DIR: ${{ steps.build.outputs.directory }}
+        run: |
+          mkdir -p artifacts
+          cp "$DIR/report.json" artifacts/report.json
+
+      - name: Check the documentation
+        if: inputs.checker-enabled
+        uses: JetBrains/writerside-checker-action@79ff89902dcd3d5c5a3f26a79bc35830377f38c5 # v1
+        with:
+          instance: ${{ matrix.instance }}
+
+      - name: Unpack the web help
+        if: inputs.pages-part-enabled
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.build.outputs.directory }}/${{ steps.build.outputs.artifact }}
+          ID: ${{ steps.build.outputs.id }}
+        run: |
+          out="$RUNNER_TEMP/davils-docs-$ID"
+          mkdir -p "$out"
+          unzip -O UTF-8 -qq "$ARCHIVE" -d "$out"
+          jq -cn --arg id "$ID" '{part: "docs", id: $id}' >"$out/.davils-part.json"
+
+      - name: Upload the Pages part
+        if: inputs.pages-part-enabled
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-pages-docs-${{ steps.build.outputs.id }}
+          path: ${{ runner.temp }}/davils-docs-${{ steps.build.outputs.id }}/
+          include-hidden-files: true
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+  algolia:
+    name: Search index ${{ matrix.instance }}
+    needs: [plan, build]
+    if: inputs.algolia-enabled
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    permissions: {}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        instance: ${{ fromJSON(needs.plan.outputs.instances) }}
+
+    # The image is an input so a caller can pin it by digest (image@sha256:...).
+    container:
+      image: ${{ inputs.algolia-publisher-image }} # zizmor: ignore[unpinned-images]
+
+    steps:
+      - name: Download the build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: writerside-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish the search index
+        shell: bash
+        env:
+          INSTANCE: ${{ matrix.instance }}
+          ALGOLIA_APP_NAME: ${{ inputs.algolia-app-name }}
+          ALGOLIA_INDEX: ${{ inputs.algolia-index }}
+          ALGOLIA_KEY: ${{ secrets.ALGOLIA_KEY }}
+        run: |
+          if [[ -z "$ALGOLIA_KEY" ]]; then
+            echo "::error::algolia-enabled needs the secret ALGOLIA_KEY."
+            exit 1
+          fi
+          id="$(tr '[:lower:]' '[:upper:]' <<<"${INSTANCE##*/}")"
+          unzip -O UTF-8 -qq "artifacts/algolia-indexes-$id.zip" -d algolia-indexes
+          env "algolia-key=$ALGOLIA_KEY" java -jar /opt/builder/help-publication-agent.jar \
+            update-index \
+            --application-name "$ALGOLIA_APP_NAME" \
+            --group-index "$ALGOLIA_INDEX" \
+            --index-directory algolia-indexes/ \
+            2>&1 | tee algolia-update-index-log.txt

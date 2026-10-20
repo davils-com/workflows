@@ -1,0 +1,17 @@
+# Dart and Flutter output of the test fixtures
+.dart_tool/
+build/
+pubspec.lock
+coverage/
+
+# Writerside build output
+/artifacts/
+/artifacts.log
+
+# The toolkit checkout a reusable workflow makes; never part of a commit
+.davils-ci/
+
+.idea/
+.vscode/
+*.iml
+.DS_Store

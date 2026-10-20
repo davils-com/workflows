@@ -1,0 +1,94 @@
+name: Discover packages
+description: >-
+  Finds the Dart and Flutter packages of a repository (pub workspace members, nested or globbed,
+  and packages outside the workspace) and narrows them to the ones a change affects. build-matrix
+  turns the result into a job matrix.
+author: davils-com
+
+inputs:
+  working-directory:
+    description: Directory of the root pubspec.yaml, relative to the repository root.
+    required: false
+    default: .
+  include:
+    description: Globs of further package directories, for packages outside the workspace (newline or comma separated, or a JSON array).
+    required: false
+    default: ''
+  exclude:
+    description: Globs of package directories to leave out.
+    required: false
+    default: ''
+  external-path-dependencies:
+    description: error or warn, for path dependencies that leave the repository.
+    required: false
+    default: error
+  affected-only:
+    description: true, false or auto (auto narrows pull requests and merge groups to the affected packages).
+    required: false
+    default: auto
+  base-sha:
+    description: The commit to compare with for affected-only. Empty means every package.
+    required: false
+    default: ''
+  always-all-paths:
+    description: Globs relative to the working directory; a change to one of them affects every package.
+    required: false
+    default: |
+      pubspec.yaml
+      pubspec.lock
+      analysis_options.yaml
+      dart_test.yaml
+      inspectra.yaml
+      inspectra.base.yaml
+      trivy*.yaml
+      tool/**
+      .github/**
+  discovery:
+    description: A discovery computed before (pipeline.yml passes its own); skips the discovery.
+    required: false
+    default: ''
+
+outputs:
+  discovery:
+    description: Every package with its metadata, as JSON.
+    value: ${{ steps.discover.outputs.discovery }}
+  affected:
+    description: The affected packages and the changed files, as JSON.
+    value: ${{ steps.discover.outputs.affected }}
+
+runs:
+  using: composite
+  steps:
+    - name: Discover the packages
+      id: discover
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INCLUDE: ${{ inputs.include }}
+        EXCLUDE: ${{ inputs.exclude }}
+        EXTERNAL_PATH_DEPS: ${{ inputs.external-path-dependencies }}
+        MODE: ${{ inputs.affected-only }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        ALWAYS_ALL_PATHS: ${{ inputs.always-all-paths }}
+        PRECOMPUTED: ${{ inputs.discovery }}
+        EVENT_NAME: ${{ github.event_name }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |
+        source "$ACTION_PATH/../_lib/common.sh"
+        if [[ -n "$PRECOMPUTED" ]]; then
+          discovery="$PRECOMPUTED"
+        else
+          discovery="$(ROOT=. bash "$ACTION_PATH/scripts/discover.sh")"
+          discovery="$(jq -c --arg root "$WORKING_DIRECTORY" '.root = $root' <<<"$discovery")"
+        fi
+        affected="$(DISCOVERY="$discovery" ROOT="$WORKING_DIRECTORY" bash "$ACTION_PATH/scripts/affected.sh")"
+        set_output discovery "$discovery"
+        set_output affected "$affected"
+        {
+          echo "### Packages"
+          echo
+          echo "| Package | Path | Type | Publishable | Affected |"
+          echo "|---|---|---|---|---|"
+          jq -r --argjson affected "$affected" '.packages[] | "| \(.name) | `\(.path)` | \(.toolchain) | \(.publishable) | \(.path as $p | $affected.paths | index($p) != null) |"' <<<"$discovery"
+        } >>"${GITHUB_STEP_SUMMARY:-/dev/null}"

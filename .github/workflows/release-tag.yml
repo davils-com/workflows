@@ -1,0 +1,538 @@
+name: Release
+
+# The release of one package, started by the push of its tag: v1.2.3 for a single package,
+# <package>-v1.2.3 for a member of a workspace (both patterns are inputs).
+#
+#   parse    the tag names a package, carries its pubspec.yaml version and is on the release branch
+#   verify   analyze, test, inspectra check of the package and the workspace root, pub publish --dry-run
+#   compile  native binaries of the package's executables (dart-compile.yml)
+#   build    the app builds of a Flutter app (flutter-build.yml)
+#   publish  pub.dev with automated publishing (pub-publish.yml)
+#   release  the GitHub release with notes, assets, checksums and attestations (github-release.yml)
+#
+# Every stage has a toggle; auto stages run when the package has what they need. The caller grants
+# contents: write, id-token: write and attestations: write. GitHub starts no workflow when more
+# than three tags are pushed at once; push the tags of a workspace release in batches of three.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before; empty discovers them here.
+        type: string
+        default: ''
+      include:
+        description: Globs of package directories outside the workspace.
+        type: string
+        default: ''
+      exclude:
+        description: Globs of package directories to leave out.
+        type: string
+        default: ''
+      tag:
+        description: The release tag; empty takes github.ref_name.
+        type: string
+        default: ''
+      tag-patterns:
+        description: JSON object of tag patterns with {package} and {version}.
+        type: string
+        default: '{"single":"v{version}","package":"{package}-v{version}"}'
+      release-branch:
+        description: Branch the tagged commit has to be on; empty skips the check.
+        type: string
+        default: main
+      sdk:
+        description: Dart SDK (stable, beta or a version).
+        type: string
+        default: stable
+      flutter-version:
+        description: Flutter version for Flutter packages.
+        type: string
+        default: stable
+
+      verify-enabled:
+        description: Analyze and test the package before anything is published.
+        type: boolean
+        default: true
+      test-command:
+        description: Replaces the test command of the verification.
+        type: string
+        default: ''
+      inspectra-enabled:
+        description: false turns it off; otherwise inspectra check runs for the package and the workspace root when the package has an Inspectra configuration.
+        type: string
+        default: auto
+      inspectra-install:
+        description: How Inspectra is installed (auto, dev-dependency, global, binary).
+        type: string
+        default: auto
+
+      compile-enabled:
+        description: false turns it off; otherwise native binaries are compiled when the package has executables.
+        type: string
+        default: auto
+      compile-targets:
+        description: JSON array of compile targets.
+        type: string
+        default: '["linux-x64","linux-arm64","macos-arm64","macos-x64","windows-x64"]'
+      flutter-build-enabled:
+        description: false turns it off; otherwise the app is built when the package is a Flutter app.
+        type: string
+        default: auto
+      flutter-targets:
+        description: JSON object of Flutter build targets (see flutter-build.yml).
+        type: string
+        default: '{"web":"auto"}'
+      build-environment:
+        description: Environment of the build jobs, for signing secrets stored in an environment.
+        type: string
+        default: ''
+
+      publish-enabled:
+        description: false turns it off; otherwise the package is published to pub.dev when it is publishable.
+        type: string
+        default: auto
+      pub-environment:
+        description: GitHub environment of the pub.dev publication, as named in the pub.dev settings.
+        type: string
+        default: pub.dev
+      dry-run:
+        description: Run everything but publish nothing to pub.dev and create no release.
+        type: boolean
+        default: false
+      wait-for-siblings:
+        description: Wait until the sibling packages are on pub.dev.
+        type: boolean
+        default: true
+      pre-publish:
+        description: Shell commands run in the package directory right before the publication.
+        type: string
+        default: ''
+
+      github-release-enabled:
+        description: Create the GitHub release.
+        type: boolean
+        default: true
+      notes-source:
+        description: auto, inspectra, changelog, file, generate or keep (see github-release.yml).
+        type: string
+        default: auto
+      notes-file:
+        description: For notes-source file, the path relative to the working directory.
+        type: string
+        default: ''
+      attest:
+        description: Attest the build provenance of the release assets.
+        type: boolean
+        default: true
+      checksums:
+        description: Attach a checksums.txt.
+        type: boolean
+        default: true
+      latest-package:
+        description: In a workspace, the package whose releases become the latest release.
+        type: string
+        default: ''
+      release-mode:
+        description: auto, create or update (see github-release.yml).
+        type: string
+        default: auto
+
+      runners:
+        description: JSON object of runner labels.
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of the verification.
+        type: number
+        default: 45
+      harden-runner:
+        description: Run step-security/harden-runner first on Linux runners.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+      pre-setup:
+        description: Shell commands run in every job before any tool is set up.
+        type: string
+        default: ''
+      post-setup:
+        description: Shell commands run in every job after the dependencies are resolved.
+        type: string
+        default: ''
+      pub-hosted-url:
+        description: URL of a private package host; its token is the secret PUB_HOSTED_TOKEN.
+        type: string
+        default: ''
+      git-host:
+        description: Host of private git dependencies; its token is the secret GIT_DEPS_TOKEN.
+        type: string
+        default: github.com
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+      APPLE_CERTIFICATE_P12_BASE64:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_PROVISIONING_PROFILES_BASE64:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      APP_STORE_CONNECT_KEY_ID:
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: false
+      APP_STORE_CONNECT_KEY_P8_BASE64:
+        required: false
+
+    outputs:
+      package:
+        description: The released package.
+        value: ${{ jobs.parse.outputs.package }}
+      version:
+        description: The released version.
+        value: ${{ jobs.parse.outputs.version }}
+      release-url:
+        description: URL of the GitHub release.
+        value: ${{ jobs.release.outputs.url }}
+
+permissions: {}
+
+jobs:
+  parse:
+    name: Parse the tag
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    outputs:
+      discovery: ${{ steps.discover.outputs.discovery }}
+      release: ${{ steps.tag.outputs.release }}
+      package: ${{ steps.tag.outputs.package }}
+      version: ${{ steps.tag.outputs.version }}
+      path: ${{ steps.tag.outputs.path }}
+      compile: ${{ steps.stages.outputs.compile }}
+      executables: ${{ steps.stages.outputs.executables }}
+      flutter-build: ${{ steps.stages.outputs.flutter-build }}
+      publish: ${{ steps.stages.outputs.publish }}
+      inspectra: ${{ steps.stages.outputs.inspectra }}
+      toolchain: ${{ steps.stages.outputs.toolchain }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Discover the packages
+        id: discover
+        uses: $/actions/discover-packages
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          include: ${{ inputs.include }}
+          exclude: ${{ inputs.exclude }}
+          affected-only: 'false'
+
+      - name: Verify the tag
+        id: tag
+        uses: $/actions/version-verify
+        with:
+          tag: ${{ inputs.tag }}
+          tag-patterns: ${{ inputs.tag-patterns }}
+          discovery: ${{ steps.discover.outputs.discovery }}
+          release-branch: ${{ inputs.release-branch }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Decide the stages
+        id: stages
+        shell: bash
+        env:
+          RELEASE: ${{ steps.tag.outputs.release }}
+          COMPILE: ${{ inputs.compile-enabled }}
+          FLUTTER_BUILD: ${{ inputs.flutter-build-enabled }}
+          PUBLISH: ${{ inputs.publish-enabled }}
+          INSPECTRA: ${{ inputs.inspectra-enabled }}
+        run: |
+          # A stage runs unless it is turned off and the package has what it needs; true cannot
+          # compile a package without executables or build a package that is no app.
+          decide() {
+            [[ "$1" != false && "$2" == true ]] && echo true || echo false
+          }
+          has_executables="$(jq '.executables | length > 0' <<<"$RELEASE")"
+          {
+            echo "compile=$(decide "$COMPILE" "$has_executables")"
+            echo "executables=$(jq -c '[.package as $p | .executables[] | {package: $p, entrypoint, name}]' <<<"$RELEASE")"
+            echo "flutter-build=$(decide "$FLUTTER_BUILD" "$(jq '.app' <<<"$RELEASE")")"
+            echo "publish=$(decide "$PUBLISH" "$(jq '.publishable' <<<"$RELEASE")")"
+            echo "inspectra=$(decide "$INSPECTRA" "$(jq '.inspectra' <<<"$RELEASE")")"
+            echo "toolchain=$(jq -r '.toolchain' <<<"$RELEASE")"
+          } >>"$GITHUB_OUTPUT"
+          {
+            echo "### Release $(jq -r '"\(.package) \(.version)"' <<<"$RELEASE")"
+            echo
+            jq -r '"Path `\(.path)`, \(.toolchain), \(if .prerelease then "pre-release" else "release" end)."' <<<"$RELEASE"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: Verify ${{ needs.parse.outputs.package }} ${{ needs.parse.outputs.version }}
+    needs: parse
+    if: inputs.verify-enabled
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    env:
+      PACKAGE_PATH: ${{ needs.parse.outputs.path }}
+      TOOLCHAIN: ${{ needs.parse.outputs.toolchain }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Dart
+        if: needs.parse.outputs.toolchain == 'dart'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: '[${{ toJSON(fromJSON(needs.parse.outputs.release)) }}]'
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Flutter
+        if: needs.parse.outputs.toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ inputs.flutter-version }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: '[${{ toJSON(fromJSON(needs.parse.outputs.release)) }}]'
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Analyze
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          if [[ "$TOOLCHAIN" == flutter ]]; then
+            (cd "$PACKAGE_PATH" && flutter analyze --fatal-infos)
+          else
+            dart analyze --fatal-infos "$PACKAGE_PATH"
+          fi
+
+      - name: Test
+        uses: $/actions/test-packages
+        with:
+          tool: ${{ needs.parse.outputs.toolchain }}
+          packages: '[${{ toJSON(fromJSON(needs.parse.outputs.release)) }}]'
+          working-directory: ${{ inputs.working-directory }}
+          command: ${{ inputs.test-command }}
+
+      - name: Set up Inspectra
+        id: inspectra
+        if: needs.parse.outputs.inspectra == 'true'
+        uses: $/actions/inspectra-setup
+        with:
+          install: ${{ inputs.inspectra-install }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Inspectra check of the package
+        if: needs.parse.outputs.inspectra == 'true'
+        uses: $/actions/inspectra-run
+        with:
+          command: ${{ steps.inspectra.outputs.command }}
+          args: -C ${{ needs.parse.outputs.path }} check
+          label: check (${{ needs.parse.outputs.package }})
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Inspectra check of the workspace
+        if: needs.parse.outputs.inspectra == 'true' && needs.parse.outputs.path != '.' && fromJSON(needs.parse.outputs.discovery).workspace.inspectra
+        uses: $/actions/inspectra-run
+        with:
+          command: ${{ steps.inspectra.outputs.command }}
+          args: check
+          label: check (workspace)
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Dry run of the publication
+        if: needs.parse.outputs.publish == 'true'
+        working-directory: ${{ inputs.working-directory }}/${{ needs.parse.outputs.path }}
+        shell: bash
+        run: |
+          "$TOOLCHAIN" pub publish --dry-run
+
+  compile:
+    name: Compile
+    needs: [parse, verify]
+    if: ${{ !cancelled() && needs.parse.result == 'success' && needs.verify.result != 'failure' && needs.parse.outputs.compile == 'true' }}
+    uses: $/.github/workflows/dart-compile.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+    with:
+      working-directory: ${{ inputs.working-directory }}
+      discovery: ${{ needs.parse.outputs.discovery }}
+      executables: ${{ needs.parse.outputs.executables }}
+      targets: ${{ inputs.compile-targets }}
+      sdk: ${{ inputs.sdk }}
+      runners: ${{ inputs.runners }}
+      harden-runner: ${{ inputs.harden-runner }}
+      harden-runner-egress-policy: ${{ inputs.harden-runner-egress-policy }}
+      harden-runner-allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+      pre-setup: ${{ inputs.pre-setup }}
+      post-setup: ${{ inputs.post-setup }}
+      pub-hosted-url: ${{ inputs.pub-hosted-url }}
+      git-host: ${{ inputs.git-host }}
+
+  build:
+    name: Build
+    needs: [parse, verify]
+    if: ${{ !cancelled() && needs.parse.result == 'success' && needs.verify.result != 'failure' && needs.parse.outputs.flutter-build == 'true' }}
+    uses: $/.github/workflows/flutter-build.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
+    with:
+      working-directory: ${{ inputs.working-directory }}
+      discovery: ${{ needs.parse.outputs.discovery }}
+      apps: '["${{ needs.parse.outputs.package }}"]'
+      targets: ${{ inputs.flutter-targets }}
+      flutter-version: ${{ inputs.flutter-version }}
+      build-name: version
+      version: ${{ needs.parse.outputs.version }}
+      environment: ${{ inputs.build-environment }}
+      release-assets: true
+      runners: ${{ inputs.runners }}
+      harden-runner: ${{ inputs.harden-runner }}
+      harden-runner-egress-policy: ${{ inputs.harden-runner-egress-policy }}
+      harden-runner-allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+      pre-setup: ${{ inputs.pre-setup }}
+      post-setup: ${{ inputs.post-setup }}
+      pub-hosted-url: ${{ inputs.pub-hosted-url }}
+      git-host: ${{ inputs.git-host }}
+
+  publish:
+    name: pub.dev
+    needs: [parse, verify, compile, build]
+    if: ${{ !cancelled() && needs.parse.result == 'success' && !contains(needs.*.result, 'failure') && needs.parse.outputs.publish == 'true' }}
+    uses: $/.github/workflows/pub-publish.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      working-directory: ${{ inputs.working-directory }}
+      discovery: ${{ needs.parse.outputs.discovery }}
+      tag: ${{ inputs.tag }}
+      tag-patterns: ${{ inputs.tag-patterns }}
+      release-branch: ${{ inputs.release-branch }}
+      environment: ${{ inputs.pub-environment }}
+      dry-run: ${{ inputs.dry-run }}
+      wait-for-siblings: ${{ inputs.wait-for-siblings }}
+      sdk: ${{ inputs.sdk }}
+      flutter-version: ${{ inputs.flutter-version }}
+      pre-publish: ${{ inputs.pre-publish }}
+      runners: ${{ inputs.runners }}
+      harden-runner: ${{ inputs.harden-runner }}
+      harden-runner-egress-policy: ${{ inputs.harden-runner-egress-policy }}
+      harden-runner-allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+  release:
+    name: GitHub release
+    needs: [parse, verify, compile, build, publish]
+    if: ${{ !cancelled() && needs.parse.result == 'success' && !contains(needs.*.result, 'failure') && inputs.github-release-enabled && !inputs.dry-run }}
+    uses: $/.github/workflows/github-release.yml
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      working-directory: ${{ inputs.working-directory }}
+      tag: ${{ inputs.tag }}
+      package: ${{ needs.parse.outputs.package }}
+      package-path: ${{ needs.parse.outputs.path }}
+      version: ${{ needs.parse.outputs.version }}
+      notes-source: ${{ inputs.notes-source }}
+      notes-file: ${{ inputs.notes-file }}
+      has-inspectra: ${{ needs.parse.outputs.inspectra == 'true' }}
+      inspectra-install: ${{ inputs.inspectra-install }}
+      attest: ${{ inputs.attest }}
+      checksums: ${{ inputs.checksums }}
+      latest-package: ${{ inputs.latest-package }}
+      mode: ${{ inputs.release-mode }}
+      sdk: ${{ inputs.sdk }}
+      runners: ${{ inputs.runners }}
+      harden-runner: ${{ inputs.harden-runner }}
+      harden-runner-egress-policy: ${{ inputs.harden-runner-egress-policy }}
+      harden-runner-allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}

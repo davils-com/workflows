@@ -1,0 +1,130 @@
+name: Build Writerside documentation
+description: >-
+  Builds a Writerside instance with JetBrains' builder image (helpbuilderinspect), the same build
+  the official action runs, without depending on that action's JavaScript runtime. Writes the
+  web help archive, report.json and, when asked, the PDF and the Algolia indexes to artifacts/.
+author: davils-com
+
+inputs:
+  instance:
+    description: Module directory and instance id, such as docs/d.
+    required: true
+  location:
+    description: Directory of the Writerside module's parent, relative to the repository root.
+    required: false
+    default: .
+  builder:
+    description: docker (the builder image directly) or action (JetBrains/writerside-github-action).
+    required: false
+    default: docker
+  image:
+    description: The builder image without tag.
+    required: false
+    default: jetbrains/writerside-builder
+  version:
+    description: Tag of the builder image.
+    required: false
+    default: '2026.09.0357'
+  pdf:
+    description: Name of a PDF export settings file (such as PDF.xml) to also build a PDF.
+    required: false
+    default: ''
+  is-group:
+    description: Build a group of instances.
+    required: false
+    default: 'false'
+
+outputs:
+  artifact:
+    description: File name of the web help archive in artifacts/.
+    value: ${{ steps.names.outputs.artifact }}
+  algolia-artifact:
+    description: File name of the Algolia index archive in artifacts/.
+    value: ${{ steps.names.outputs.algolia }}
+  id:
+    description: The instance id.
+    value: ${{ steps.names.outputs.id }}
+  directory:
+    description: The artifacts directory, relative to the repository root.
+    value: ${{ steps.names.outputs.directory }}
+
+runs:
+  using: composite
+  steps:
+    - name: Name the artifacts
+      id: names
+      shell: bash
+      env:
+        INSTANCE: ${{ inputs.instance }}
+        LOCATION: ${{ inputs.location }}
+      run: |
+        id="${INSTANCE##*/}"
+        upper="$(tr '[:lower:]' '[:upper:]' <<<"$id")"
+        location="${LOCATION#./}"
+        location="${location%/}"
+        [[ "$location" == . ]] && location=''
+        {
+          echo "id=$id"
+          echo "artifact=webHelp${upper}2-all.zip"
+          echo "algolia=algolia-indexes-${upper}.zip"
+          echo "directory=${location:+$location/}artifacts"
+          echo "location=$location"
+        } >>"$GITHUB_OUTPUT"
+
+    - name: Build with the builder image
+      if: inputs.builder == 'docker'
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}:${{ inputs.version }}
+        INSTANCE: ${{ inputs.instance }}
+        LOCATION: ${{ steps.names.outputs.location }}
+        PDF: ${{ inputs.pdf }}
+        IS_GROUP: ${{ inputs.is-group }}
+      run: |
+        # The same commands as JetBrains/writerside-github-action, with the inputs passed as
+        # environment variables instead of being spliced into the script.
+        docker pull --quiet "$IMAGE"
+        docker run --rm \
+          -v "$GITHUB_WORKSPACE:/github/workspace" \
+          -e INSTANCE -e LOCATION -e PDF -e IS_GROUP \
+          "$IMAGE" /bin/bash -c '
+            set -u
+            export DISPLAY=:99
+            Xvfb :99 &
+            git config --global --add safe.directory /github/workspace
+            source_dir="/github/workspace/${LOCATION}"
+            if [ "$IS_GROUP" = true ]; then target=(-g "$INSTANCE"); else target=(-product "$INSTANCE"); fi
+            pdf=()
+            [ -n "$PDF" ] && pdf=(-pdf "$PDF")
+            /opt/builder/bin/idea.sh helpbuilderinspect -source-dir "$source_dir" "${target[@]}" "${pdf[@]}" \
+              --runner github -output-dir "$source_dir/artifacts/" || true
+            chmod -R a+rwX "$source_dir/artifacts" 2>/dev/null || true
+          '
+        dir="${LOCATION:+$LOCATION/}artifacts"
+        if [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
+          echo "::error::The Writerside build of $INSTANCE wrote no artifacts."
+          exit 1
+        fi
+        ls -la "$dir"
+
+    - name: Build with the Writerside action
+      if: inputs.builder == 'action'
+      uses: JetBrains/writerside-github-action@738910d7cf197d67188300d0e0f84b2e708db3cf # v4
+      with:
+        instance: ${{ inputs.instance }}
+        location: ${{ steps.names.outputs.location }}
+        docker-version: ${{ inputs.version }}
+        pdf: ${{ inputs.pdf }}
+        is-group: ${{ inputs.is-group }}
+
+    - name: Check the build result
+      shell: bash
+      env:
+        DIR: ${{ steps.names.outputs.directory }}
+        ARTIFACT: ${{ steps.names.outputs.artifact }}
+        INSTANCE: ${{ inputs.instance }}
+      run: |
+        if [[ ! -f "$DIR/$ARTIFACT" ]]; then
+          echo "::error::The Writerside build of $INSTANCE wrote no $ARTIFACT; see the build log and $DIR/report.json."
+          exit 1
+        fi

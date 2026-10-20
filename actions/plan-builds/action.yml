@@ -1,0 +1,58 @@
+name: Plan builds
+description: >-
+  Plans build jobs from discovered packages: every Flutter app times its enabled targets, or every
+  Dart executable times its targets, each with the runner the target needs.
+author: davils-com
+
+inputs:
+  kind:
+    description: flutter or dart-compile.
+    required: true
+  discovery:
+    description: Output of discover-packages.
+    required: true
+  targets:
+    description: flutter, a JSON object target -> true/false/auto; dart-compile, a JSON array of targets.
+    required: false
+    default: ''
+  apps:
+    description: flutter, a JSON array of app package names; empty means every app.
+    required: false
+    default: ''
+  executables:
+    description: dart-compile, a JSON array of {package, entrypoint, name}; empty means every executable of the pubspec.yaml files.
+    required: false
+    default: ''
+  runners:
+    description: JSON object of runner labels.
+    required: false
+    default: '{}'
+
+outputs:
+  matrix:
+    description: The matrix as JSON.
+    value: ${{ steps.plan.outputs.matrix }}
+  count:
+    description: The number of build jobs.
+    value: ${{ steps.plan.outputs.count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Plan the builds
+      id: plan
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        KIND: ${{ inputs.kind }}
+        DISCOVERY: ${{ inputs.discovery }}
+        TARGETS: ${{ inputs.targets }}
+        APPS: ${{ inputs.apps }}
+        EXECUTABLES: ${{ inputs.executables }}
+        RUNNERS: ${{ inputs.runners }}
+      run: |
+        source "$ACTION_PATH/../_lib/common.sh"
+        plan="$(bash "$ACTION_PATH/scripts/plan.sh")"
+        set_output matrix "$(jq -c '{include}' <<<"$plan")"
+        set_output count "$(jq -r '.count' <<<"$plan")"
+        jq -r '.include[] | "- \(.label) on \(.runner)"' <<<"$plan"

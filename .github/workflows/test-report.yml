@@ -1,0 +1,73 @@
+name: Test report
+
+# Turns the JSON test reports that dart-ci.yml and flutter-ci.yml upload with test-report-enabled
+# (artifacts davils-test-reports-*) into a check run with an annotation for every failed test.
+# Call it after those workflows in the same run. It is a separate workflow because it needs
+# checks: write, which the test jobs themselves do not.
+
+on:
+  workflow_call:
+    inputs:
+      artifact-pattern:
+        description: Pattern of the report artifacts.
+        type: string
+        default: davils-test-reports-*
+      name:
+        description: Name of the check run.
+        type: string
+        default: Tests
+      reporter:
+        description: dart-json or flutter-json; auto picks it from the artifact names.
+        type: string
+        default: auto
+      runners:
+        description: JSON object of runner labels.
+        type: string
+        default: '{}'
+
+permissions: {}
+
+jobs:
+  report:
+    name: Test report
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      checks: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [dart, flutter]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: davils-test-reports-${{ matrix.toolchain }}-*
+          path: ${{ runner.temp }}/davils-reports
+
+      - name: Look for reports
+        id: found
+        shell: bash
+        env:
+          DIR: ${{ runner.temp }}/davils-reports
+        run: echo "count=$(find "$DIR" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')" >>"$GITHUB_OUTPUT"
+
+      - name: Publish the results
+        if: steps.found.outputs.count != '0'
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+        with:
+          name: ${{ inputs.name }} (${{ matrix.toolchain }})
+          path: ${{ runner.temp }}/davils-reports/**/*.json
+          reporter: ${{ inputs.reporter != 'auto' && inputs.reporter || format('{0}-json', matrix.toolchain) }}
+          fail-on-error: false
+          fail-on-empty: false

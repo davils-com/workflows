@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions: {}
+
+jobs:
+  pipeline:
+    name: Pipeline
+    uses: davils-com/workflows/.github/workflows/pipeline.yml@v1
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+      checks: write
+      security-events: write
+      pages: write
+      id-token: write
+      attestations: write
+    # Android: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
+    # ANDROID_KEY_PASSWORD. Apple: APPLE_CERTIFICATE_P12_BASE64, APPLE_CERTIFICATE_PASSWORD,
+    # APPLE_PROVISIONING_PROFILES_BASE64, APPLE_TEAM_ID, APP_STORE_CONNECT_* for notarization.
+    secrets: inherit
+    with:
+      preset: flutter-app

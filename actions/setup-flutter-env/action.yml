@@ -1,0 +1,179 @@
+name: Set up Flutter
+description: >-
+  Installs a Flutter SDK (a channel, a version or the version of a file such as .fvmrc or
+  pubspec.yaml), the Linux desktop build dependencies and Java when asked, restores the pub cache
+  and resolves the dependencies of the packages.
+author: davils-com
+
+inputs:
+  version:
+    description: stable, beta, main, any or a version such as 3.47.7. A channel name installs its latest release.
+    required: false
+    default: stable
+  version-file:
+    description: A file to read the Flutter version from (pubspec.yaml or .fvmrc); wins over version.
+    required: false
+    default: ''
+  working-directory:
+    description: Directory of the root pubspec.yaml, relative to the repository root.
+    required: false
+    default: .
+  packages:
+    description: JSON array of packages ({path, workspace}) whose dependencies to resolve; empty resolves the working directory only.
+    required: false
+    default: ''
+  resolve:
+    description: Run flutter pub get.
+    required: false
+    default: 'true'
+  pub-get-args:
+    description: Extra arguments for flutter pub get.
+    required: false
+    default: ''
+  cache:
+    description: Cache the SDK and the pub cache.
+    required: false
+    default: 'true'
+  linux-desktop:
+    description: Install the packages flutter build linux needs (Linux runners only).
+    required: false
+    default: 'false'
+  java-version:
+    description: Java version to install for Android builds; empty installs none.
+    required: false
+    default: ''
+  pub-hosted-url:
+    description: URL of a private package host.
+    required: false
+    default: ''
+  pub-hosted-token:
+    description: Token of the private package host.
+    required: false
+    default: ''
+  git-token:
+    description: Token for git dependencies on private repositories.
+    required: false
+    default: ''
+  git-host:
+    description: Host of the private git repositories.
+    required: false
+    default: github.com
+  post-setup:
+    description: Shell commands run after the dependencies are resolved.
+    required: false
+    default: ''
+
+outputs:
+  flutter-version:
+    description: The installed Flutter version.
+    value: ${{ steps.flutter.outputs.VERSION }}
+  dart-version:
+    description: The Dart version of the installed Flutter.
+    value: ${{ steps.version.outputs.dart }}
+
+runs:
+  using: composite
+  steps:
+    - name: Pick the Flutter version
+      id: pick
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        # A channel name means its latest release; anything else is a version.
+        case "$VERSION" in
+          stable | beta | main | master)
+            echo "channel=$VERSION" >>"$GITHUB_OUTPUT"
+            echo "version=" >>"$GITHUB_OUTPUT"
+            ;;
+          '' | any)
+            echo "channel=stable" >>"$GITHUB_OUTPUT"
+            echo "version=" >>"$GITHUB_OUTPUT"
+            ;;
+          *)
+            echo "channel=" >>"$GITHUB_OUTPUT"
+            echo "version=$VERSION" >>"$GITHUB_OUTPUT"
+            ;;
+        esac
+
+    - name: Set up Flutter
+      id: flutter
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      with:
+        channel: ${{ steps.pick.outputs.channel }}
+        flutter-version: ${{ steps.pick.outputs.version }}
+        flutter-version-file: ${{ inputs.version-file }}
+        cache: ${{ inputs.cache == 'true' }}
+        pub-cache: ${{ inputs.cache == 'true' }}
+
+    - name: Read the Dart version
+      id: version
+      shell: bash
+      run: |
+        echo "dart=$(dart --version 2>&1 | sed -nE 's/.*Dart SDK version: ([^ ]+).*/\1/p')" >>"$GITHUB_OUTPUT"
+        flutter --version
+
+    - name: Install the Linux desktop build dependencies
+      if: inputs.linux-desktop == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq ninja-build libgtk-3-dev clang cmake pkg-config liblzma-dev libstdc++-12-dev xvfb
+
+    - name: Set up Java ${{ inputs.java-version }}
+      if: inputs.java-version != ''
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    # pub reads the token from stdin and keeps it in its own configuration, so it never reaches
+    # the environment of later steps.
+    - name: Sign in to the private package host
+      if: inputs.pub-hosted-url != '' && inputs.pub-hosted-token != ''
+      shell: bash
+      env:
+        PUB_HOSTED_URL_INPUT: ${{ inputs.pub-hosted-url }}
+        PUB_HOSTED_TOKEN_INPUT: ${{ inputs.pub-hosted-token }}
+      run: |
+        echo "::add-mask::$PUB_HOSTED_TOKEN_INPUT"
+        printf '%s\n' "$PUB_HOSTED_TOKEN_INPUT" | flutter pub token add "$PUB_HOSTED_URL_INPUT"
+
+    - name: Sign in to the private git host
+      if: inputs.git-token != ''
+      shell: bash
+      env:
+        GIT_TOKEN: ${{ inputs.git-token }}
+        GIT_HOST: ${{ inputs.git-host }}
+      run: |
+        echo "::add-mask::$GIT_TOKEN"
+        git config --global "url.https://x-access-token:${GIT_TOKEN}@${GIT_HOST}/.insteadOf" "https://${GIT_HOST}/"
+        git config --global --add "url.https://x-access-token:${GIT_TOKEN}@${GIT_HOST}/.insteadOf" "git@${GIT_HOST}:"
+
+    - name: Resolve the dependencies
+      if: inputs.resolve == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        PUB_GET_ARGS: ${{ inputs.pub-get-args }}
+      run: |
+        if [[ -z "$PACKAGES" || "$PACKAGES" == '[]' ]]; then
+          dirs=.
+        else
+          dirs="$(jq -r '(if any(.[]; .workspace) then ["."] else [] end) + [.[] | select(.workspace | not) | .path] | unique | .[]' <<<"$PACKAGES")"
+        fi
+        for dir in $dirs; do
+          echo "::group::flutter pub get ($dir)"
+          # shellcheck disable=SC2086
+          (cd "$dir" && flutter pub get $PUB_GET_ARGS)
+          echo "::endgroup::"
+        done
+
+    - name: Run the post-setup hook
+      if: inputs.post-setup != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HOOK: ${{ inputs.post-setup }}
+      run: bash -euo pipefail -c "$HOOK"

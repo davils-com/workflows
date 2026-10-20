@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE vars SYSTEM "https://resources.jetbrains.com/writerside/1.0/vars.dtd">
+<vars>
+    <var name="product" value="davils-com/workflows"/>
+    <var name="version" value="0.1.0"/> <!-- x-release-please-version -->
+    <var name="repo" value="https://github.com/davils-com/workflows"/>
+</vars>

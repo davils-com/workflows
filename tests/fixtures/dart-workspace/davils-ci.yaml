@@ -1,0 +1,4 @@
+# yaml-language-server: $schema=../../../schemas/davils-ci.schema.json
+version: 1
+packages:
+  include: [apps/*]

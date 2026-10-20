@@ -1,0 +1,134 @@
+name: GitHub Pages
+
+# Assembles the GitHub Pages site from every part the run produced (writerside.yml, dartdoc.yml,
+# flutter-build.yml web builds, the coverage and Inspectra reports) and deploys it. A repository
+# has exactly one site, so this is the only workflow that deploys; call it after the producers.
+#
+# The caller grants pages: write and id-token: write. The github-pages environment only allows
+# the default branch unless its deployment rules say otherwise.
+
+on:
+  workflow_call:
+    inputs:
+      layout:
+        description: JSON object mapping a part (docs, api, web, coverage, inspectra) to its path; {id} is the id of the part.
+        type: string
+        default: '{"docs":"/","api":"/api","web":"/app/{id}","coverage":"/coverage/{id}","inspectra":"/quality"}'
+      landing-page:
+        description: auto (when no part provides /index.html), true or false.
+        type: string
+        default: auto
+      cname:
+        description: Custom domain of the site.
+        type: string
+        default: ''
+      spa-fallback:
+        description: Id of a web part whose index.html also serves as 404.html, for client side routing.
+        type: string
+        default: ''
+      extra-path:
+        description: Directory of the repository copied into the site root.
+        type: string
+        default: ''
+      title:
+        description: Title of the landing page; empty uses the repository name.
+        type: string
+        default: ''
+      deploy-enabled:
+        description: Deploy the site; false only assembles and uploads it.
+        type: boolean
+        default: true
+      environment:
+        description: Name of the deployment environment.
+        type: string
+        default: github-pages
+      runners:
+        description: JSON object of runner labels.
+        type: string
+        default: '{}'
+      harden-runner:
+        description: Run step-security/harden-runner first.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+
+    outputs:
+      url:
+        description: The URL of the deployed site.
+        value: ${{ jobs.deploy.outputs.url }}
+
+permissions: {}
+
+jobs:
+  assemble:
+    name: Assemble
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      pages: read
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        if: inputs.extra-path != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Pages
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Assemble the site
+        uses: $/actions/pages-assemble
+        with:
+          layout: ${{ inputs.layout }}
+          base-path: ${{ inputs.cname == '' && steps.pages.outputs.base_path || '' }}
+          landing-page: ${{ inputs.landing-page }}
+          cname: ${{ inputs.cname }}
+          spa-fallback: ${{ inputs.spa-fallback }}
+          extra-path: ${{ inputs.extra-path }}
+          title: ${{ inputs.title }}
+
+  deploy:
+    name: Deploy
+    needs: assemble
+    if: inputs.deploy-enabled
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    permissions:
+      pages: write
+      id-token: write
+
+    # One deployment at a time per repository; a newer one waits instead of cancelling.
+    concurrency:
+      group: davils-pages-${{ github.repository }}
+      cancel-in-progress: false
+
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    outputs:
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

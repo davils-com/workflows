@@ -1,0 +1,24 @@
+version: 2
+
+# Every action is pinned by its full commit SHA with the version as a comment. Dependabot keeps
+# those pins current, in the reusable workflows as well as in the composite actions, which it only
+# finds when their directories are listed. The updates go to develop, the integration branch, and
+# arrive as one grouped pull request so a toolkit release moves every pin at once.
+#
+# Pins Dependabot cannot see (the Writerside builder image, the runner labels, the versions of
+# actionlint, zizmor and check-jsonschema) are kept current by .github/workflows/self-update-pins.yml.
+
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/actions/*"
+    schedule:
+      interval: "weekly"
+    target-branch: "develop"
+    open-pull-requests-limit: 10
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"

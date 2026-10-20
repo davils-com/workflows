@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<buildprofiles xsi:noNamespaceSchemaLocation="https://resources.jetbrains.com/writerside/1.0/build-profiles.xsd"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <variables>
+        <header-logo></header-logo>
+        <primary-color>blue</primary-color>
+        <browser-edits-url>https://github.com/davils-com/workflows/edit/develop/docs/</browser-edits-url>
+        <enable-browser-edits>true</enable-browser-edits>
+    </variables>
+    <build-profile instance="w">
+        <variables>
+            <noindex-content>false</noindex-content>
+        </variables>
+    </build-profile>
+</buildprofiles>

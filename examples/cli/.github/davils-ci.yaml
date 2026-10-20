@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/davils-com/workflows/v1/schemas/davils-ci.schema.json
+#
+# A command line tool like Inspectra: tested on every operating system, published to pub.dev and
+# attached to each release as native binaries with checksums and provenance attestations.
+version: 1
+
+dart:
+  os: [ubuntu, macos, windows]
+  build-runner:
+    enabled: true
+
+inspectra:
+  check:
+    root: false
+
+build:
+  dart-compile:
+    targets: [linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64, windows-arm64]
+    smoke-test-args: --version
+
+release:
+  github:
+    notes-source: inspectra

@@ -1,0 +1,30 @@
+name: Run a hook
+description: >-
+  Runs shell commands of the consumer repository at a fixed point of a job. The commands arrive
+  through an environment variable, never through an expression, and do nothing when empty.
+author: davils-com
+
+inputs:
+  run:
+    description: The shell commands.
+    required: false
+    default: ''
+  working-directory:
+    description: Directory the commands run in, relative to the repository root.
+    required: false
+    default: .
+  name:
+    description: Name of the hook, for the log.
+    required: false
+    default: hook
+
+runs:
+  using: composite
+  steps:
+    - name: Run the ${{ inputs.name }} hook
+      if: inputs.run != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HOOK: ${{ inputs.run }}
+      run: bash -euo pipefail -c "$HOOK"

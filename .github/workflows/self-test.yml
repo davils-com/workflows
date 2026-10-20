@@ -1,0 +1,329 @@
+name: Self test
+
+# Runs the reusable workflows of this repository against the fixtures in tests/fixtures, the way
+# a consumer repository calls them, and checks what they produce. Pull requests run a fast
+# selection; the nightly run and a manual run with `full` add every operating system and target.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  merge_group:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Every operating system and build target.
+        type: boolean
+        default: true
+
+concurrency:
+  group: self-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  dart-single:
+    name: Dart single package
+    uses: $/.github/workflows/dart-ci.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/dart-single
+      affected-only: 'off'
+      sdks: '["stable","lowest"]'
+      os: ${{ (github.event_name == 'schedule' || inputs.full) && '["ubuntu","macos","windows"]' || '["ubuntu"]' }}
+      test-report-enabled: true
+
+  dart-workspace:
+    name: Dart workspace
+    uses: $/.github/workflows/dart-ci.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/dart-workspace
+      include: apps/*
+      affected-only: 'off'
+      granularity: package
+      downgrade-enabled: true
+      pana-enabled: ${{ github.event_name == 'schedule' || inputs.full }}
+
+  dart-shards:
+    name: Dart workspace in shards
+    uses: $/.github/workflows/dart-ci.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/dart-workspace
+      affected-only: 'off'
+      granularity: shards
+      shards: 2
+      sdks: '["stable"]'
+      coverage-enabled: false
+      publish-dry-run-enabled: 'off'
+
+  flutter-workspace:
+    name: Flutter workspace
+    uses: $/.github/workflows/flutter-ci.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/flutter-workspace
+      affected-only: 'off'
+      flutter-versions: '["stable","lowest"]'
+
+  flutter-outside:
+    name: Flutter app outside a workspace
+    uses: $/.github/workflows/flutter-ci.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/dart-workspace
+      include: apps/*
+      affected-only: 'off'
+      test-report-enabled: true
+
+  test-report:
+    name: Test report
+    needs: [dart-single, flutter-outside]
+    if: ${{ !cancelled() }}
+    uses: $/.github/workflows/test-report.yml
+    permissions:
+      contents: read
+      checks: write
+    with:
+      name: Self test
+
+  negative:
+    name: Failures are failures
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Dart
+        uses: $/actions/setup-dart-env
+        with:
+          working-directory: tests/fixtures/broken
+
+      - name: Failing tests
+        id: test
+        continue-on-error: true
+        uses: $/actions/test-packages
+        with:
+          packages: '[{"name": "davils_ci_broken", "path": ".", "has_tests": true}]'
+          working-directory: tests/fixtures/broken
+          coverage: 'true'
+
+      - name: A version that does not match the tag
+        id: tag
+        continue-on-error: true
+        uses: $/actions/version-verify
+        with:
+          tag: v9.9.9
+          discovery: '{"packages": [{"name": "davils_ci_broken", "path": ".", "version": "0.0.1", "publishable": false}]}'
+          release-branch: ''
+
+      - name: An invalid configuration
+        id: config
+        continue-on-error: true
+        uses: $/actions/resolve-config
+        with:
+          config: 'dart: {formatt: true}'
+          working-directory: tests/fixtures/broken
+
+      - name: Overlapping Pages parts
+        id: pages
+        continue-on-error: true
+        shell: bash
+        run: |
+          parts="$RUNNER_TEMP/parts"
+          mkdir -p "$parts/a/api" "$parts/b"
+          echo a >"$parts/a/api/index.html"
+          echo b >"$parts/b/index.html"
+          echo '{"part":"docs","id":"a"}' >"$parts/a/.davils-part.json"
+          echo '{"part":"api","id":"b"}' >"$parts/b/.davils-part.json"
+          IN_DIR="$parts" OUT_DIR="$RUNNER_TEMP/site" bash actions/pages-assemble/scripts/assemble.sh
+
+      - name: Every step above failed
+        shell: bash
+        env:
+          TEST: ${{ steps.test.outcome }}
+          TAG: ${{ steps.tag.outcome }}
+          CONFIG: ${{ steps.config.outcome }}
+          PAGES: ${{ steps.pages.outcome }}
+        run: |
+          echo "test=$TEST tag=$TAG config=$CONFIG pages=$PAGES"
+          [[ "$TEST" == failure && "$TAG" == failure && "$CONFIG" == failure && "$PAGES" == failure ]]
+
+  inspectra:
+    name: Inspectra
+    uses: $/.github/workflows/inspectra.yml
+    permissions:
+      contents: read
+      security-events: write
+    with:
+      working-directory: tests/fixtures/dart-single
+      affected-only: 'off'
+      install: global
+      sarif-enabled: 'off'
+      config-lint-enabled: false
+      fail-on: critical
+      report-enabled: true
+
+  writerside:
+    name: Writerside
+    uses: $/.github/workflows/writerside.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/writerside
+
+  dartdoc:
+    name: API documentation
+    uses: $/.github/workflows/dartdoc.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/dart-workspace
+      publishable-only: false
+      dry-run-on-pr: false
+
+  flutter-build:
+    name: Flutter build
+    uses: $/.github/workflows/flutter-build.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/dart-workspace
+      include: apps/*
+      targets: '{"web": true}'
+      pages-part-enabled: true
+
+  dart-compile:
+    name: Dart compile
+    uses: $/.github/workflows/dart-compile.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/dart-single
+      targets: ${{ (github.event_name == 'schedule' || inputs.full) && '["linux-x64","linux-arm64","macos-arm64","macos-x64","windows-x64","windows-arm64"]' || '["linux-x64"]' }}
+
+  pages:
+    name: GitHub Pages
+    needs: [inspectra, writerside, dartdoc, flutter-build]
+    if: ${{ !cancelled() }}
+    uses: $/.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      deploy-enabled: false
+
+  assert-artifacts:
+    name: Check the artifacts
+    needs: [pages, dart-compile]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download the site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/site
+
+      - name: Download the binary
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets-single-linux-x64
+          path: ${{ runner.temp }}/binary
+
+      - name: The site has every part
+        shell: bash
+        run: |
+          site="$RUNNER_TEMP/site"
+          tar -xf "$site/artifact.tar" -C "$site"
+          for file in index.html .nojekyll api/index.html api/davils_ci_alpha/index.html app/davils_ci_demo/index.html quality/index.html; do
+            [[ -f "$site/$file" ]] || { echo "::error::The site lacks $file."; exit 1; }
+          done
+          grep -q '<base href="/[^"]*/app/davils_ci_demo/"' "$site/app/davils_ci_demo/index.html"
+
+      - name: The binary runs and matches its checksum
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/binary"
+          sha256sum -c single-linux-x64.zip.sha256
+          unzip -q single-linux-x64.zip
+          [[ "$(./single --version)" == 1.2.3 ]]
+          [[ "$(./single Dart)" == 'Hello, Dart!' ]]
+
+  release:
+    name: Release (dry run)
+    uses: $/.github/workflows/release-tag.yml
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      working-directory: tests/fixtures/dart-single
+      tag: v1.2.3
+      release-branch: ''
+      dry-run: true
+      github-release-enabled: false
+      compile-targets: '["linux-x64"]'
+      pub-environment: self-test
+
+  pipeline:
+    name: Pipeline
+    uses: $/.github/workflows/pipeline.yml
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+      checks: write
+      security-events: write
+      pages: write
+      id-token: write
+      attestations: write
+    with:
+      working-directory: tests/fixtures/dart-workspace
+      config-file: tests/fixtures/dart-workspace/davils-ci.yaml
+      pages: 'off'
+      pr-lint: 'off'
+      release: none
+      inspectra: 'off'
+
+  gate:
+    name: Gate
+    needs: [dart-single, dart-workspace, dart-shards, flutter-workspace, flutter-outside, test-report, negative, inspectra, writerside, dartdoc, flutter-build, dart-compile, pages, assert-artifacts, release, pipeline]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions: {}
+
+    steps:
+      - name: Check the results
+        shell: bash
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          failed="$(jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")' <<<"$RESULTS")"
+          [[ -z "$failed" ]] || { echo "::error::Failed: $failed."; exit 1; }

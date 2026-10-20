@@ -1,0 +1,8 @@
+# Default owner for everything in the repository.
+*                        @davils-com/maintainers
+
+# Everything that decides what every consumer repository runs, downloads and trusts.
+/.github/workflows/      @davils-com/maintainers
+/actions/                @davils-com/maintainers
+/schemas/                @davils-com/maintainers
+/SECURITY.md             @davils-com/maintainers

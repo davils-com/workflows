@@ -1,0 +1,15 @@
+# A documentation repository: Writerside on Pages, nothing else.
+dart:
+  enabled: false
+flutter:
+  enabled: false
+inspectra:
+  enabled: false
+dartdoc:
+  enabled: false
+writerside:
+  enabled: true
+pages:
+  enabled: true
+release:
+  mode: none

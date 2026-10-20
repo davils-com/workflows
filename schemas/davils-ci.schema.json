@@ -1,0 +1,1458 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/davils-com/workflows/v1/schemas/davils-ci.schema.json",
+  "title": "davils-com/workflows configuration (.github/davils-ci.yaml)",
+  "description": "Generated from actions/resolve-config/defaults.yaml by tools/gen-schema.sh. Do not edit by hand.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "The version of this file's format."
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "working-directory": {
+          "type": "string",
+          "default": "."
+        },
+        "release-branch": {
+          "type": "string",
+          "default": "main"
+        },
+        "integration-branch": {
+          "type": "string",
+          "default": "develop"
+        }
+      },
+      "description": "Where the project lives and which branches it uses."
+    },
+    "packages": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "external-path-dependencies": {
+          "enum": [
+            "error",
+            "warn"
+          ],
+          "default": "error"
+        },
+        "affected-only": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "always-all-paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "pubspec.yaml",
+            "pubspec.lock",
+            "analysis_options.yaml",
+            "dart_test.yaml",
+            "inspectra.yaml",
+            "inspectra.base.yaml",
+            "trivy*.yaml",
+            "tool/**",
+            ".github/**"
+          ]
+        },
+        "granularity": {
+          "enum": [
+            "auto",
+            "package",
+            "workspace",
+            "shards"
+          ],
+          "default": "auto"
+        },
+        "shards": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 8
+        },
+        "shard-threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
+        }
+      },
+      "description": "Which packages the workflows find and how they spread over jobs."
+    },
+    "dart": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "sdks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "stable",
+            "lowest"
+          ]
+        },
+        "os": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ubuntu",
+              "ubuntu-arm",
+              "macos",
+              "windows",
+              "windows-arm"
+            ]
+          },
+          "default": [
+            "ubuntu"
+          ]
+        },
+        "format": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "analyze": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "fatal-infos": {
+              "type": "boolean",
+              "default": true
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "test": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "platforms": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            },
+            "args": {
+              "type": "string",
+              "default": ""
+            },
+            "report": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "source": {
+              "enum": [
+                "auto",
+                "dart-ci",
+                "inspectra",
+                "none"
+              ],
+              "default": "auto"
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "codecov": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "build-runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "publish-dry-run": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            }
+          }
+        },
+        "pana": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": false
+            },
+            "min-points": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        },
+        "downgrade": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": false
+            }
+          }
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        }
+      },
+      "description": "Format, analyze, test and coverage of the Dart packages."
+    },
+    "flutter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "channel": {
+          "enum": [
+            "stable",
+            "beta",
+            "main",
+            "master"
+          ],
+          "default": "stable"
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "stable"
+          ]
+        },
+        "version-file": {
+          "type": "string",
+          "default": ""
+        },
+        "os": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ubuntu",
+              "ubuntu-arm",
+              "macos",
+              "windows",
+              "windows-arm"
+            ]
+          },
+          "default": [
+            "ubuntu"
+          ]
+        },
+        "format": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "analyze": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "fatal-infos": {
+              "type": "boolean",
+              "default": true
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "test": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            },
+            "args": {
+              "type": "string",
+              "default": ""
+            },
+            "exclude-tags": {
+              "type": "string",
+              "default": ""
+            },
+            "report": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "source": {
+              "enum": [
+                "auto",
+                "flutter-ci",
+                "inspectra",
+                "none"
+              ],
+              "default": "auto"
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "codecov": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "build-runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "publish-dry-run": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            }
+          }
+        },
+        "golden": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": false
+            },
+            "os": {
+              "enum": [
+                "ubuntu",
+                "macos",
+                "windows"
+              ],
+              "default": "macos"
+            },
+            "tags": {
+              "type": "string",
+              "default": "golden"
+            }
+          }
+        },
+        "integration-test": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": false
+            },
+            "device": {
+              "enum": [
+                "auto",
+                "linux",
+                "chrome",
+                "macos",
+                "windows"
+              ],
+              "default": "auto"
+            }
+          }
+        },
+        "l10n": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            }
+          }
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        }
+      },
+      "description": "Format, analyze, test and coverage of the Flutter packages."
+    },
+    "inspectra": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "install": {
+          "enum": [
+            "auto",
+            "dev-dependency",
+            "global",
+            "binary"
+          ],
+          "default": "auto"
+        },
+        "version": {
+          "type": "string",
+          "description": "The version of this file's format.",
+          "default": "latest"
+        },
+        "config-file": {
+          "type": "string",
+          "default": ""
+        },
+        "profile": {
+          "type": "string",
+          "default": ""
+        },
+        "check": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "root": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            }
+          }
+        },
+        "scan": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "recursive": {
+              "type": "boolean",
+              "default": true
+            },
+            "fail-on": {
+              "enum": [
+                "critical",
+                "high",
+                "medium",
+                "low",
+                "unknown",
+                "none"
+              ],
+              "default": "high"
+            },
+            "min-severity": {
+              "enum": [
+                "",
+                "critical",
+                "high",
+                "medium",
+                "low",
+                "unknown"
+              ],
+              "default": ""
+            }
+          }
+        },
+        "sarif": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "category": {
+              "type": "string",
+              "default": "inspectra"
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            }
+          }
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            }
+          }
+        },
+        "config-lint": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            }
+          }
+        },
+        "config-diff": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            }
+          }
+        },
+        "trivy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "enum": [
+                "",
+                "auto",
+                "required",
+                "disabled"
+              ],
+              "default": ""
+            },
+            "version": {
+              "type": "string",
+              "description": "The version of this file's format.",
+              "default": ""
+            },
+            "cache": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "offline": {
+          "type": "boolean",
+          "default": false
+        },
+        "tolerate-incomplete": {
+          "type": "boolean",
+          "default": false
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        }
+      },
+      "description": "Supply-chain scans and quality gates with Inspectra."
+    },
+    "writerside": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "instances": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "builder": {
+          "enum": [
+            "docker",
+            "action"
+          ],
+          "default": "docker"
+        },
+        "builder-image": {
+          "type": "string",
+          "default": "jetbrains/writerside-builder"
+        },
+        "builder-version": {
+          "type": "string",
+          "default": "2026.09.0357"
+        },
+        "checker": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            }
+          }
+        },
+        "pdf": {
+          "type": "string",
+          "default": ""
+        },
+        "algolia": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": false
+            },
+            "app-name": {
+              "type": "string",
+              "default": ""
+            },
+            "index": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        }
+      },
+      "description": "The Writerside documentation."
+    },
+    "dartdoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "publishable-only": {
+          "type": "boolean",
+          "default": true
+        },
+        "validate-links": {
+          "type": "boolean",
+          "default": true
+        },
+        "fail-on-warnings": {
+          "type": "boolean",
+          "default": false
+        },
+        "dry-run-on-pr": {
+          "type": "boolean",
+          "default": true
+        },
+        "args": {
+          "type": "string",
+          "default": ""
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        }
+      },
+      "description": "The API documentation of the published packages."
+    },
+    "pages": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "deploy": {
+          "type": "boolean",
+          "default": true
+        },
+        "parts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "docs": {
+              "type": "boolean",
+              "default": true
+            },
+            "api": {
+              "type": "boolean",
+              "default": true
+            },
+            "web": {
+              "type": "boolean",
+              "default": true
+            },
+            "coverage": {
+              "type": "boolean",
+              "default": false
+            },
+            "inspectra": {
+              "type": "boolean",
+              "description": "Supply-chain scans and quality gates with Inspectra.",
+              "default": false
+            }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "docs": {
+              "type": "string",
+              "default": "/"
+            },
+            "api": {
+              "type": "string",
+              "default": "/api"
+            },
+            "web": {
+              "type": "string",
+              "default": "/app/{id}"
+            },
+            "coverage": {
+              "type": "string",
+              "default": "/coverage/{id}"
+            },
+            "inspectra": {
+              "type": "string",
+              "description": "Supply-chain scans and quality gates with Inspectra.",
+              "default": "/quality"
+            }
+          }
+        },
+        "landing-page": {
+          "$ref": "#/$defs/toggle",
+          "default": "auto"
+        },
+        "cname": {
+          "type": "string",
+          "default": ""
+        },
+        "spa-fallback": {
+          "type": "string",
+          "default": ""
+        },
+        "extra-path": {
+          "type": "string",
+          "default": ""
+        },
+        "environment": {
+          "type": "string",
+          "default": "github-pages"
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        }
+      },
+      "description": "The GitHub Pages site assembled from the documentation, API docs and web builds."
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "flutter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "apps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "targets": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "web": {
+                  "$ref": "#/$defs/toggle",
+                  "default": "auto"
+                },
+                "apk": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "appbundle": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "ios": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "ipa": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "macos": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "linux-x64": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "linux-arm64": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "windows-x64": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                },
+                "windows-arm64": {
+                  "$ref": "#/$defs/toggle",
+                  "default": false
+                }
+              }
+            },
+            "build-mode": {
+              "enum": [
+                "release",
+                "profile",
+                "debug"
+              ],
+              "default": "release"
+            },
+            "flavor": {
+              "type": "string",
+              "default": ""
+            },
+            "target-file": {
+              "type": "string",
+              "default": ""
+            },
+            "dart-define-from-file": {
+              "type": "string",
+              "default": ""
+            },
+            "extra-args": {
+              "type": "string",
+              "default": ""
+            },
+            "build-name": {
+              "type": "string",
+              "default": "pubspec"
+            },
+            "build-number": {
+              "type": "string",
+              "default": "run-number"
+            },
+            "obfuscate": {
+              "type": "boolean",
+              "default": false
+            },
+            "web-wasm": {
+              "type": "boolean",
+              "default": false
+            },
+            "android-signing": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "apple-signing": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "macos-notarize": {
+              "type": "boolean",
+              "default": false
+            },
+            "java-version": {
+              "type": "string",
+              "default": "17"
+            },
+            "environment": {
+              "type": "string",
+              "default": ""
+            },
+            "when": {
+              "$ref": "#/$defs/when"
+            }
+          },
+          "description": "Format, analyze, test and coverage of the Flutter packages."
+        },
+        "dart-compile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "executables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "package",
+                  "entrypoint"
+                ],
+                "properties": {
+                  "package": {
+                    "type": "string"
+                  },
+                  "entrypoint": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "default": []
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "linux-x64",
+                  "linux-arm64",
+                  "macos-arm64",
+                  "macos-x64",
+                  "windows-x64",
+                  "windows-arm64"
+                ]
+              },
+              "default": [
+                "linux-x64",
+                "linux-arm64",
+                "macos-arm64",
+                "macos-x64",
+                "windows-x64"
+              ]
+            },
+            "archive": {
+              "enum": [
+                "zip",
+                "tar.gz"
+              ],
+              "default": "zip"
+            },
+            "checksums": {
+              "type": "boolean",
+              "default": true
+            },
+            "smoke-test-args": {
+              "type": "string",
+              "default": "--version"
+            },
+            "when": {
+              "$ref": "#/$defs/when"
+            }
+          }
+        }
+      },
+      "description": "Build artifacts: Flutter apps and native Dart executables."
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "auto",
+            "none",
+            "tag",
+            "release-please"
+          ],
+          "default": "auto"
+        },
+        "tag-patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "single": {
+              "type": "string",
+              "default": "v{version}"
+            },
+            "package": {
+              "type": "string",
+              "default": "{package}-v{version}"
+            }
+          }
+        },
+        "verify": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "on-branch": {
+              "type": "string",
+              "default": "main"
+            }
+          }
+        },
+        "pub": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            },
+            "environment": {
+              "type": "string",
+              "default": "pub.dev"
+            },
+            "wait-for-siblings": {
+              "type": "boolean",
+              "default": true
+            },
+            "wait-attempts": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 60
+            },
+            "wait-interval": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 30
+            }
+          }
+        },
+        "github": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "notes-source": {
+              "enum": [
+                "auto",
+                "inspectra",
+                "changelog",
+                "generate",
+                "file",
+                "keep"
+              ],
+              "default": "auto"
+            },
+            "attest": {
+              "type": "boolean",
+              "default": true
+            },
+            "checksums": {
+              "type": "boolean",
+              "default": true
+            },
+            "draft": {
+              "type": "boolean",
+              "default": false
+            },
+            "make-latest": {
+              "$ref": "#/$defs/toggle",
+              "default": "auto"
+            }
+          }
+        },
+        "release-please": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "token-source": {
+              "enum": [
+                "app",
+                "pat",
+                "github-token"
+              ],
+              "default": "app"
+            },
+            "config-file": {
+              "type": "string",
+              "default": "release-please-config.json"
+            },
+            "manifest-file": {
+              "type": "string",
+              "default": ".release-please-manifest.json"
+            },
+            "dispatch-workflow": {
+              "type": "string",
+              "default": ""
+            },
+            "back-merge": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      },
+      "description": "Releases: verification, pub.dev, GitHub releases, release-please."
+    },
+    "pr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "types": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "require-scope": {
+              "type": "boolean",
+              "default": false
+            },
+            "subject-pattern": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "branch-policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "main-allowed-sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [
+                "develop",
+                "release-please--*",
+                "hotfix/*"
+              ]
+            }
+          }
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        }
+      },
+      "description": "Checks of pull requests: the title and the source branch."
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "harden-runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/toggle",
+              "default": true
+            },
+            "egress-policy": {
+              "enum": [
+                "audit",
+                "block"
+              ],
+              "default": "audit"
+            },
+            "allowed-endpoints": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        }
+      },
+      "description": "Hardening of the runners."
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pre-setup": {
+          "type": "string",
+          "default": ""
+        },
+        "post-setup": {
+          "type": "string",
+          "default": ""
+        },
+        "pre-test": {
+          "type": "string",
+          "default": ""
+        },
+        "post-test": {
+          "type": "string",
+          "default": ""
+        },
+        "pre-publish": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "description": "Shell commands run at fixed points of every job."
+    },
+    "runners": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "linux": {
+          "type": "string",
+          "default": "ubuntu-latest"
+        },
+        "linux-arm": {
+          "type": "string",
+          "default": "ubuntu-24.04-arm"
+        },
+        "macos": {
+          "type": "string",
+          "default": "macos-latest"
+        },
+        "macos-intel": {
+          "type": "string",
+          "default": "macos-15-intel"
+        },
+        "windows": {
+          "type": "string",
+          "default": "windows-latest"
+        },
+        "windows-arm": {
+          "type": "string",
+          "default": "windows-11-arm"
+        }
+      },
+      "description": "Runner labels; a JSON array selects self-hosted runners."
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ci": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 45
+        },
+        "inspectra": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Supply-chain scans and quality gates with Inspectra.",
+          "default": 30
+        },
+        "docs": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
+        },
+        "build": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Build artifacts: Flutter apps and native Dart executables.",
+          "default": 60
+        },
+        "publish": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 45
+        },
+        "release": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Releases: verification, pub.dev, GitHub releases, release-please.",
+          "default": 20
+        }
+      },
+      "description": "Job timeouts in minutes."
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "retention-days": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 7
+        }
+      },
+      "description": "Artifact settings."
+    }
+  },
+  "$defs": {
+    "toggle": {
+      "description": "true, false or auto (on when the repository has what the feature needs); on and off work as well.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "enum": [
+            "auto",
+            "true",
+            "false",
+            "on",
+            "off"
+          ]
+        }
+      ]
+    },
+    "when": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "push",
+              "tag",
+              "pull_request",
+              "merge_group",
+              "schedule",
+              "workflow_dispatch",
+              "workflow_call",
+              "release",
+              "repository_dispatch"
+            ]
+          }
+        },
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

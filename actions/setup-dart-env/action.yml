@@ -1,0 +1,138 @@
+name: Set up Dart
+description: >-
+  Installs a Dart SDK (stable, beta, dev or a version), restores the pub cache, signs in to a
+  private package host and private git hosts when tokens are given, and resolves the dependencies
+  of the packages (once at the workspace root for workspace members).
+author: davils-com
+
+inputs:
+  sdk:
+    description: stable, beta, dev, main or a version such as 3.13.5.
+    required: false
+    default: stable
+  working-directory:
+    description: Directory of the root pubspec.yaml, relative to the repository root.
+    required: false
+    default: .
+  packages:
+    description: JSON array of packages ({path, workspace}) whose dependencies to resolve; empty resolves the working directory only.
+    required: false
+    default: ''
+  resolve:
+    description: Run dart pub get.
+    required: false
+    default: 'true'
+  pub-get-args:
+    description: Extra arguments for dart pub get, such as --enforce-lockfile.
+    required: false
+    default: ''
+  cache:
+    description: Restore and save the pub cache.
+    required: false
+    default: 'true'
+  pub-hosted-url:
+    description: URL of a private package host.
+    required: false
+    default: ''
+  pub-hosted-token:
+    description: Token of the private package host.
+    required: false
+    default: ''
+  git-token:
+    description: Token for git dependencies on private repositories.
+    required: false
+    default: ''
+  git-host:
+    description: Host of the private git repositories.
+    required: false
+    default: github.com
+  post-setup:
+    description: Shell commands run after the dependencies are resolved.
+    required: false
+    default: ''
+
+outputs:
+  dart-version:
+    description: The installed Dart version.
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Dart ${{ inputs.sdk }}
+      uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      with:
+        sdk: ${{ inputs.sdk }}
+
+    - name: Read the Dart version
+      id: version
+      shell: bash
+      run: |
+        version="$(dart --version 2>&1 | sed -nE 's/.*Dart SDK version: ([^ ]+).*/\1/p')"
+        echo "version=$version" >>"$GITHUB_OUTPUT"
+        if [[ "$RUNNER_OS" == Windows ]]; then
+          echo "pub-cache=$LOCALAPPDATA\\Pub\\Cache" >>"$GITHUB_OUTPUT"
+        else
+          echo "pub-cache=$HOME/.pub-cache" >>"$GITHUB_OUTPUT"
+        fi
+
+    - name: Restore the pub cache
+      if: inputs.cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.version.outputs.pub-cache }}
+        key: pub-dart-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}-${{ hashFiles(format('{0}/**/pubspec.yaml', inputs.working-directory), format('{0}/**/pubspec.lock', inputs.working-directory)) }}
+        restore-keys: |
+          pub-dart-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}-
+
+    # pub reads the token from stdin and keeps it in its own configuration, so it never reaches
+    # the environment of later steps.
+    - name: Sign in to the private package host
+      if: inputs.pub-hosted-url != '' && inputs.pub-hosted-token != ''
+      shell: bash
+      env:
+        PUB_HOSTED_URL_INPUT: ${{ inputs.pub-hosted-url }}
+        PUB_HOSTED_TOKEN_INPUT: ${{ inputs.pub-hosted-token }}
+      run: |
+        echo "::add-mask::$PUB_HOSTED_TOKEN_INPUT"
+        printf '%s\n' "$PUB_HOSTED_TOKEN_INPUT" | dart pub token add "$PUB_HOSTED_URL_INPUT"
+
+    - name: Sign in to the private git host
+      if: inputs.git-token != ''
+      shell: bash
+      env:
+        GIT_TOKEN: ${{ inputs.git-token }}
+        GIT_HOST: ${{ inputs.git-host }}
+      run: |
+        echo "::add-mask::$GIT_TOKEN"
+        git config --global "url.https://x-access-token:${GIT_TOKEN}@${GIT_HOST}/.insteadOf" "https://${GIT_HOST}/"
+        git config --global --add "url.https://x-access-token:${GIT_TOKEN}@${GIT_HOST}/.insteadOf" "git@${GIT_HOST}:"
+
+    - name: Resolve the dependencies
+      if: inputs.resolve == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        PUB_GET_ARGS: ${{ inputs.pub-get-args }}
+      run: |
+        # Workspace members resolve together at the root; packages outside it on their own.
+        if [[ -z "$PACKAGES" || "$PACKAGES" == '[]' ]]; then
+          dirs=.
+        else
+          dirs="$(jq -r '(if any(.[]; .workspace) then ["."] else [] end) + [.[] | select(.workspace | not) | .path] | unique | .[]' <<<"$PACKAGES")"
+        fi
+        for dir in $dirs; do
+          echo "::group::dart pub get ($dir)"
+          # shellcheck disable=SC2086
+          (cd "$dir" && dart pub get $PUB_GET_ARGS)
+          echo "::endgroup::"
+        done
+
+    - name: Run the post-setup hook
+      if: inputs.post-setup != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HOOK: ${{ inputs.post-setup }}
+      run: bash -euo pipefail -c "$HOOK"

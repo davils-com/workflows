@@ -1,0 +1,64 @@
+name: Android signing
+description: >-
+  Writes the upload keystore of an Android app from a base64 secret and an android/key.properties
+  that points to it. The app's android/app/build.gradle(.kts) reads key.properties for its release
+  signing config, as in the Flutter deployment guide. Nothing is written when the keystore is empty.
+author: davils-com
+
+inputs:
+  app-directory:
+    description: Directory of the Flutter app, relative to the repository root.
+    required: true
+  keystore-base64:
+    description: The keystore (JKS or PKCS12), base64 encoded.
+    required: false
+    default: ''
+  keystore-password:
+    description: Password of the keystore.
+    required: false
+    default: ''
+  key-alias:
+    description: Alias of the upload key.
+    required: false
+    default: ''
+  key-password:
+    description: Password of the upload key; empty uses the keystore password.
+    required: false
+    default: ''
+
+outputs:
+  signed:
+    description: true when a keystore was written.
+    value: ${{ steps.write.outputs.signed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Write the keystore and key.properties
+      id: write
+      shell: bash
+      env:
+        APP_DIR: ${{ inputs.app-directory }}
+        KEYSTORE: ${{ inputs.keystore-base64 }}
+        STORE_PASSWORD: ${{ inputs.keystore-password }}
+        KEY_ALIAS: ${{ inputs.key-alias }}
+        KEY_PASSWORD: ${{ inputs.key-password }}
+      run: |
+        if [[ -z "$KEYSTORE" ]]; then
+          echo "signed=false" >>"$GITHUB_OUTPUT"
+          echo "No keystore given; the build uses the app's own signing config."
+          exit 0
+        fi
+        [[ -n "$STORE_PASSWORD" && -n "$KEY_ALIAS" ]] || { echo "::error::Android signing needs the keystore password and the key alias."; exit 1; }
+        echo "::add-mask::$STORE_PASSWORD"
+        [[ -n "$KEY_PASSWORD" ]] && echo "::add-mask::$KEY_PASSWORD"
+        keystore="$RUNNER_TEMP/davils-upload-keystore.jks"
+        printf '%s' "$KEYSTORE" | base64 --decode >"$keystore"
+        umask 077
+        {
+          echo "storePassword=$STORE_PASSWORD"
+          echo "keyPassword=${KEY_PASSWORD:-$STORE_PASSWORD}"
+          echo "keyAlias=$KEY_ALIAS"
+          echo "storeFile=$keystore"
+        } >"$APP_DIR/android/key.properties"
+        echo "signed=true" >>"$GITHUB_OUTPUT"

@@ -1,0 +1,169 @@
+name: Pull request checks
+
+# Checks a pull request before anything else runs:
+#
+#   title          a Conventional Commits title (feat(scope): subject), the scopes being the
+#                  package names of the repository and extra-scopes
+#   branch-policy  only allowed branches merge into the release branch (develop, release-please
+#                  branches and hotfixes by default)
+#
+# The caller triggers on pull_request with types opened, edited, synchronize and reopened, so
+# editing the title runs the check again, and grants pull-requests: read.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before; empty discovers them here.
+        type: string
+        default: ''
+      title-enabled:
+        description: Check the title.
+        type: boolean
+        default: true
+      types:
+        description: Allowed types, newline separated; empty allows the Conventional Commits types.
+        type: string
+        default: ''
+      scopes:
+        description: auto (the package names plus extra-scopes), none (any scope) or a newline separated list.
+        type: string
+        default: auto
+      extra-scopes:
+        description: Scopes allowed besides the package names, newline separated.
+        type: string
+        default: |
+          deps
+          ci
+          docs
+          release
+          workspace
+      require-scope:
+        description: Require a scope.
+        type: boolean
+        default: false
+      subject-pattern:
+        description: Regular expression the subject has to match, such as ^(?![A-Z]).+$.
+        type: string
+        default: ''
+      branch-policy-enabled:
+        description: Check the source branch of pull requests into the release branch.
+        type: boolean
+        default: true
+      release-branch:
+        description: The release branch.
+        type: string
+        default: main
+      allowed-sources:
+        description: JSON array of branch globs allowed to merge into the release branch.
+        type: string
+        default: '["develop","release-please--*","hotfix/*"]'
+      runners:
+        description: JSON object of runner labels.
+        type: string
+        default: '{}'
+      harden-runner:
+        description: Run step-security/harden-runner first.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+
+permissions: {}
+
+jobs:
+  check:
+    name: Title and branch
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        if: inputs.title-enabled && inputs.scopes == 'auto'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Discover the packages
+        id: discover
+        if: inputs.title-enabled && inputs.scopes == 'auto'
+        uses: $/actions/discover-packages
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          affected-only: 'false'
+
+      - name: Collect the scopes
+        id: scopes
+        shell: bash
+        env:
+          MODE: ${{ inputs.scopes }}
+          EXTRA: ${{ inputs.extra-scopes }}
+          DISCOVERY: ${{ steps.discover.outputs.discovery }}
+        run: |
+          discovery="${DISCOVERY:-}"
+          [[ -z "$discovery" ]] && discovery='{"packages":[]}'
+          case "$MODE" in
+            none) scopes='' ;;
+            auto)
+              scopes="$( { jq -r '.packages[].name' <<<"$discovery"; printf '%s\n' "$EXTRA"; } | grep -v '^$' | sort -u)"
+              ;;
+            *) scopes="$MODE" ;;
+          esac
+          {
+            echo "scopes<<davils_scopes"
+            echo "$scopes"
+            echo "davils_scopes"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Check the title
+        if: inputs.title-enabled
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: ${{ inputs.types }}
+          scopes: ${{ steps.scopes.outputs.scopes }}
+          requireScope: ${{ inputs.require-scope }}
+          subjectPattern: ${{ inputs.subject-pattern }}
+
+      - name: Check the source branch
+        if: inputs.branch-policy-enabled && github.base_ref == inputs.release-branch
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          ALLOWED: ${{ inputs.allowed-sources }}
+          RELEASE: ${{ inputs.release-branch }}
+        run: |
+          shopt -s extglob
+          while IFS= read -r pattern; do
+            # shellcheck disable=SC2053
+            if [[ "$HEAD_REF" == $pattern ]]; then
+              echo "$HEAD_REF may merge into $RELEASE ($pattern)."
+              exit 0
+            fi
+          done < <(jq -r '.[]' <<<"$ALLOWED")
+          echo "::error::$HEAD_REF may not merge into $RELEASE. Allowed: $(jq -r 'join(", ")' <<<"$ALLOWED")."
+          exit 1

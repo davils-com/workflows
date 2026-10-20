@@ -1,0 +1,9 @@
+name: davils_ci_flutter_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+  flutter: ">=3.38.0"
+
+workspace:
+  - packages/*

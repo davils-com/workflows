@@ -1,0 +1,144 @@
+name: Inspectra scan
+description: >-
+  Runs inspectra scan (OSV audit, pubspec rules, typosquatting, Trivy filesystem scan) once for
+  GitHub code scanning (SARIF, never failing) and once as the gate, whose Markdown report goes to
+  the job summary.
+author: davils-com
+
+inputs:
+  command:
+    description: The command that runs Inspectra (the command output of inspectra-setup).
+    required: true
+  working-directory:
+    description: Directory to scan, relative to the repository root.
+    required: false
+    default: .
+  recursive:
+    description: Also scan nested packages (pub workspaces and monorepos).
+    required: false
+    default: 'true'
+  fail-on:
+    description: critical, high, medium, low, unknown, or none to never fail.
+    required: false
+    default: high
+  min-severity:
+    description: Hide findings below this severity.
+    required: false
+    default: ''
+  trivy-mode:
+    description: auto, required or disabled; empty keeps the configuration.
+    required: false
+    default: ''
+  trivy-version:
+    description: Trivy version; empty keeps the configuration.
+    required: false
+    default: ''
+  offline:
+    description: Never open a network connection.
+    required: false
+    default: 'false'
+  sarif:
+    description: Upload the findings to GitHub code scanning (needs security-events write).
+    required: false
+    default: 'true'
+  sarif-category:
+    description: Category of the SARIF upload.
+    required: false
+    default: inspectra
+  summary:
+    description: Write the Markdown report to the job summary.
+    required: false
+    default: 'true'
+  tolerate-incomplete:
+    description: Turn exit code 69 into a warning.
+    required: false
+    default: 'false'
+  config-file:
+    description: Sets INSPECTRA_CONFIG.
+    required: false
+    default: ''
+  profile:
+    description: Sets INSPECTRA_PROFILE.
+    required: false
+    default: ''
+  args:
+    description: Extra arguments for inspectra scan.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Assemble the scan options
+      id: options
+      shell: bash
+      env:
+        RECURSIVE: ${{ inputs.recursive }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+        TRIVY_MODE: ${{ inputs.trivy-mode }}
+        TRIVY_VERSION: ${{ inputs.trivy-version }}
+        OFFLINE: ${{ inputs.offline }}
+        EXTRA: ${{ inputs.args }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        options=(scan)
+        [[ "$RECURSIVE" == true ]] && options+=(-r)
+        [[ -n "$MIN_SEVERITY" ]] && options+=(--min-severity "$MIN_SEVERITY")
+        [[ -n "$TRIVY_MODE" ]] && options+=(--trivy-mode "$TRIVY_MODE")
+        [[ -n "$TRIVY_VERSION" ]] && options+=(--trivy-version "$TRIVY_VERSION")
+        [[ "$OFFLINE" == true ]] && options+=(--offline)
+        [[ -n "$EXTRA" ]] && options+=($EXTRA)
+        gate=("${options[@]}")
+        if [[ "$FAIL_ON" == none ]]; then gate+=(--exit-zero); else gate+=(--fail-on "$FAIL_ON"); fi
+        {
+          echo "scan=${options[*]}"
+          echo "gate=${gate[*]}"
+        } >>"$GITHUB_OUTPUT"
+
+    - name: Scan for code scanning
+      if: inputs.sarif == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INSPECTRA: ${{ inputs.command }}
+        OPTIONS: ${{ steps.options.outputs.scan }}
+        CONFIG_FILE: ${{ inputs.config-file }}
+        PROFILE: ${{ inputs.profile }}
+      run: |
+        [[ -n "$CONFIG_FILE" ]] && export INSPECTRA_CONFIG="$CONFIG_FILE"
+        [[ -n "$PROFILE" ]] && export INSPECTRA_PROFILE="$PROFILE"
+        read -r -a command <<<"$INSPECTRA"
+        read -r -a options <<<"$OPTIONS"
+        status=0
+        "${command[@]}" "${options[@]}" --format sarif --output "$RUNNER_TEMP/inspectra.sarif" --exit-zero || status=$?
+        # 69 still writes the report; everything else is reported by the gate below.
+        [[ -f "$RUNNER_TEMP/inspectra.sarif" ]] || echo "::warning::Inspectra wrote no SARIF report (exit code $status)."
+
+    - name: Upload to code scanning
+      if: always() && inputs.sarif == 'true' && hashFiles(format('{0}/inspectra.sarif', runner.temp)) != ''
+      uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+      with:
+        sarif_file: ${{ runner.temp }}/inspectra.sarif
+        category: ${{ inputs.sarif-category }}
+
+    - name: Gate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INSPECTRA: ${{ inputs.command }}
+        OPTIONS: ${{ steps.options.outputs.gate }}
+        SUMMARY: ${{ inputs.summary }}
+        TOLERATE_INCOMPLETE: ${{ inputs.tolerate-incomplete }}
+        CONFIG_FILE: ${{ inputs.config-file }}
+        PROFILE: ${{ inputs.profile }}
+      run: |
+        [[ -n "$CONFIG_FILE" ]] && export INSPECTRA_CONFIG="$CONFIG_FILE"
+        [[ -n "$PROFILE" ]] && export INSPECTRA_PROFILE="$PROFILE"
+        read -r -a options <<<"$OPTIONS"
+        status=0
+        bash "$ACTION_PATH/../inspectra-run/scripts/run.sh" scan "${options[@]}" --format markdown --output "$RUNNER_TEMP/inspectra-scan.md" || status=$?
+        if [[ "$SUMMARY" == true && -f "$RUNNER_TEMP/inspectra-scan.md" ]]; then
+          cat "$RUNNER_TEMP/inspectra-scan.md" >>"$GITHUB_STEP_SUMMARY"
+        fi
+        exit "$status"

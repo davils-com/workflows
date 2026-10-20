@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/davils-com/workflows/v1/schemas/davils-ci.schema.json
+#
+# A single package on pub.dev. On pub.dev, the package's automated publishing names this
+# repository, the tag pattern v{{version}} and the environment pub.dev.
+version: 1
+
+dart:
+  # The newest SDK and the lowest one the pubspec.yaml allows.
+  sdks: [stable, lowest]
+  os: [ubuntu, macos, windows]
+  test:
+    platforms: [vm, chrome, chrome:dart2wasm]
+  coverage:
+    min: 90
+    codecov: true
+  pana:
+    enabled: true
+    min-points: 140
+
+dartdoc:
+  validate-links: true
+
+release:
+  tag-patterns:
+    single: v{version}

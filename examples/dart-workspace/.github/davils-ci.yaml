@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/davils-com/workflows/v1/schemas/davils-ci.schema.json
+#
+# A pub workspace whose members are published one by one, with Inspectra, Writerside on Pages and
+# the API docs under /api. Pull requests only check the packages they affect.
+version: 1
+
+packages:
+  # A Flutter package outside the workspace, resolved on its own.
+  include: ['*_flutter']
+  exclude: ['**/example']
+  # Spread over 8 test jobs once there are more than 20 packages.
+  granularity: auto
+
+dart:
+  sdks: [stable, lowest]
+  test:
+    platforms: [vm, chrome, chrome:dart2wasm]
+  coverage:
+    # Packages with Inspectra's coverage gate get their coverage there; the tests run once.
+    source: auto
+
+flutter:
+  versions: [stable]
+
+inspectra:
+  # The dev dependency of the workspace root.
+  install: auto
+  scan:
+    fail-on: high
+  config-diff:
+    enabled: auto
+
+writerside:
+  instances: [docs/e]
+
+pages:
+  parts:
+    coverage: true
+    inspectra: true
+
+release:
+  tag-patterns:
+    package: '{package}-v{version}'
+  pub:
+    environment: pub.dev
+    wait-for-siblings: true

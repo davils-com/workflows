@@ -1,0 +1,77 @@
+name: Set up Inspectra
+description: >-
+  Makes Inspectra available (the dev dependency of the project, a global activation or the
+  checksum-verified native binary of a release), restores the Trivy database cache and, when asked,
+  provisions Trivy on the PATH for build_runner builders with run_on_build.
+author: davils-com
+
+inputs:
+  install:
+    description: auto (dev-dependency when the root pubspec.yaml depends on inspectra, global otherwise), dev-dependency, global or binary.
+    required: false
+    default: auto
+  version:
+    description: latest or a version such as 2.1.0, for global and binary.
+    required: false
+    default: latest
+  working-directory:
+    description: Directory of the root pubspec.yaml, relative to the repository root.
+    required: false
+    default: .
+  trivy-cache:
+    description: Restore and save the Trivy vulnerability database (~/.cache/trivy).
+    required: false
+    default: 'true'
+  trivy-on-path:
+    description: Provision Trivy with inspectra trivy --install and put it on the PATH of later steps.
+    required: false
+    default: 'false'
+  binary-repository:
+    description: Repository of the native binaries.
+    required: false
+    default: davils-com/Inspectra
+
+outputs:
+  command:
+    description: The command that runs Inspectra, such as dart run inspectra.
+    value: ${{ steps.install.outputs.command }}
+  mode:
+    description: The install mode used.
+    value: ${{ steps.install.outputs.mode }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Inspectra
+      id: install
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        MODE: ${{ inputs.install }}
+        VERSION: ${{ inputs.version }}
+        REPOSITORY: ${{ inputs.binary-repository }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: bash "$ACTION_PATH/scripts/install.sh"
+
+    # The key contains the run id, so every run saves a fresh database and restore-keys restores
+    # the newest one; Trivy then only downloads what changed.
+    - name: Cache the Trivy database
+      if: inputs.trivy-cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/trivy
+        key: trivy-db-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: trivy-db-${{ runner.os }}-
+
+    - name: Provision Trivy
+      if: inputs.trivy-on-path == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INSPECTRA: ${{ steps.install.outputs.command }}
+      # The directory comes from Inspectra's checksum-verified Trivy install, not from user input.
+      run: | # zizmor: ignore[github-env]
+        read -r -a command <<<"$INSPECTRA"
+        "${command[@]}" trivy --install --format json --output "$RUNNER_TEMP/trivy.json"
+        dirname "$(jq -r .trivy.executable "$RUNNER_TEMP/trivy.json")" >>"$GITHUB_PATH"

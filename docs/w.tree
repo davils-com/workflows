@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE instance-profile
+        SYSTEM "https://resources.jetbrains.com/writerside/1.0/product-profile.dtd">
+
+<instance-profile id="w"
+                  name="davils-com/workflows"
+                  start-page="Home.md">
+
+    <toc-element topic="Home.md"/>
+    <toc-element topic="Getting-Started.md"/>
+    <toc-element topic="Configuration.md"/>
+    <toc-element toc-title="Guides">
+        <toc-element topic="Monorepos.md"/>
+        <toc-element topic="Dart-and-Flutter.md"/>
+        <toc-element topic="Inspectra.md"/>
+        <toc-element topic="Documentation-and-Pages.md"/>
+        <toc-element topic="Builds.md"/>
+        <toc-element topic="Releases.md"/>
+        <toc-element topic="Security.md"/>
+        <toc-element topic="Migration.md"/>
+    </toc-element>
+    <toc-element toc-title="Reference">
+        <toc-element topic="Configuration-Reference.md"/>
+        <toc-element topic="Workflow-pipeline.md"/>
+        <toc-element topic="Workflow-dart-ci.md"/>
+        <toc-element topic="Workflow-flutter-ci.md"/>
+        <toc-element topic="Workflow-inspectra.md"/>
+        <toc-element topic="Workflow-writerside.md"/>
+        <toc-element topic="Workflow-dartdoc.md"/>
+        <toc-element topic="Workflow-pages.md"/>
+        <toc-element topic="Workflow-flutter-build.md"/>
+        <toc-element topic="Workflow-dart-compile.md"/>
+        <toc-element topic="Workflow-release-tag.md"/>
+        <toc-element topic="Workflow-pub-publish.md"/>
+        <toc-element topic="Workflow-github-release.md"/>
+        <toc-element topic="Workflow-release-please.md"/>
+        <toc-element topic="Workflow-pr-lint.md"/>
+        <toc-element topic="Workflow-test-report.md"/>
+        <toc-element topic="Actions.md"/>
+    </toc-element>
+    <toc-element topic="Development.md"/>
+</instance-profile>

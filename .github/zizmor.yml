@@ -1,0 +1,7 @@
+rules:
+  # Every third-party action is pinned by its full commit SHA. Local actions (./.davils-ci/...)
+  # are pinned through the toolkit checkout, whose ref is the release of this repository.
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin

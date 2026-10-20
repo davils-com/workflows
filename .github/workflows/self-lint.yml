@@ -1,0 +1,115 @@
+name: Self lint
+
+# Lints and unit tests this repository: actionlint, ShellCheck and zizmor over the workflows and
+# composite actions, the generated files (schema, flutter-ci.yml, reference docs), the pins, the
+# house style, the JSON schema against every example and fixture configuration, and the bats
+# tests of the scripts.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: self-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  # Kept current by self-update-pins.yml.
+  ACTIONLINT_VERSION: '1.7.12'
+  ZIZMOR_VERSION: '1.31.1'
+  CHECK_JSONSCHEMA_VERSION: '0.38.2'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # actionlint from its release, verified against the release's checksums.
+      - name: Install actionlint
+        shell: bash
+        run: |
+          base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/$archive"
+          curl -fsSLO "$base/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          grep " $archive\$" "actionlint_${ACTIONLINT_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "$archive" actionlint
+          sudo install actionlint /usr/local/bin/actionlint
+          actionlint --version
+
+      - name: Install zizmor, check-jsonschema and bats
+        shell: bash
+        run: |
+          pipx install "zizmor==${ZIZMOR_VERSION}"
+          pipx install "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
+          sudo apt-get install -y -qq bats >/dev/null
+          zizmor --version
+          check-jsonschema --version
+          bats --version
+
+      - name: Lint the workflows, actions and scripts
+        run: bash tools/lint.sh
+
+      - name: Check the pins
+        if: ${{ !cancelled() }}
+        run: bash tools/check-pins.sh
+
+      - name: Check the house style
+        if: ${{ !cancelled() }}
+        run: bash tools/check-dashes.sh
+
+      - name: Check the generated files
+        if: ${{ !cancelled() }}
+        run: |
+          bash tools/gen-schema.sh --check
+          bash tools/gen-flutter-ci.sh --check
+          bash tools/gen-docs.sh --check
+
+      - name: Validate the configurations against the schema
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          check-jsonschema --check-metaschema schemas/davils-ci.schema.json
+          mapfile -t files < <(find examples tests/fixtures -name 'davils-ci.yaml' | sort)
+          check-jsonschema --schemafile schemas/davils-ci.schema.json "${files[@]}"
+          check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
+          check-jsonschema --builtin-schema vendor.github-actions actions/*/action.yml
+          check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
+
+      - name: Test the scripts
+        if: ${{ !cancelled() }}
+        run: bats --print-output-on-failure tests/scripts
+
+      - name: Audit for code scanning
+        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork }}
+        run: zizmor --config .github/zizmor.yml --format sarif .github/workflows actions >"$RUNNER_TEMP/zizmor.sarif" || true
+
+      - name: Upload the audit
+        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork }}
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: ${{ runner.temp }}/zizmor.sarif
+          category: zizmor

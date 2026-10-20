@@ -1,0 +1,975 @@
+name: Dart CI
+
+# Format, analyze, test and coverage of every Dart package of a repository: a single package, the
+# members of a pub workspace (nested or globbed) and packages outside the workspace. The same
+# workflow serves Flutter packages with `toolchain: flutter`; flutter-ci.yml calls it that way and
+# adds the Flutter specific inputs.
+#
+# Every feature has an `<feature>-enabled` input and, where it runs a command, a `<feature>-command`
+# input that replaces it. Nothing here needs a secret; the optional ones sign in to a private
+# package host, private git dependencies and Codecov.
+
+on:
+  workflow_call:
+    inputs:
+      # Common inputs of every reusable workflow of davils-com/workflows.
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before (pipeline.yml passes its own); empty discovers them here.
+        type: string
+        default: ''
+      include:
+        description: Globs of package directories outside the workspace (newline or comma separated, or a JSON array).
+        type: string
+        default: ''
+      exclude:
+        description: Globs of package directories to leave out.
+        type: string
+        default: ''
+      affected-only:
+        description: true, false or auto (auto checks only the packages a pull request or merge group affects).
+        type: string
+        default: auto
+      base-sha:
+        description: The commit to compare with for affected-only; empty takes it from the event.
+        type: string
+        default: ''
+      always-all-paths:
+        description: Globs relative to the working directory whose change affects every package.
+        type: string
+        default: '["pubspec.yaml","pubspec.lock","analysis_options.yaml","dart_test.yaml","inspectra.yaml","inspectra.base.yaml","trivy*.yaml","tool/**",".github/**"]'
+      granularity:
+        description: auto, package, workspace or shards; how packages spread over test jobs.
+        type: string
+        default: auto
+      shards:
+        description: Number of test jobs for granularity shards.
+        type: number
+        default: 8
+      shard-threshold:
+        description: Package count from which granularity auto shards.
+        type: number
+        default: 20
+      runners:
+        description: JSON object of runner labels (linux, linux-arm, macos, windows, windows-arm); a JSON array value selects self-hosted runners.
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of every job.
+        type: number
+        default: 45
+      harden-runner:
+        description: Run step-security/harden-runner first on Linux runners.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+      pre-setup:
+        description: Shell commands run in every job before any tool is set up.
+        type: string
+        default: ''
+      post-setup:
+        description: Shell commands run in every job after the dependencies are resolved.
+        type: string
+        default: ''
+      pre-test:
+        description: Shell commands run before the tests of every test job.
+        type: string
+        default: ''
+      post-test:
+        description: Shell commands run after the tests of every test job, also when they failed.
+        type: string
+        default: ''
+      artifact-retention-days:
+        description: Days to keep the artifacts.
+        type: number
+        default: 7
+      fail-fast:
+        description: Cancel the other test jobs when one fails.
+        type: boolean
+        default: false
+      pub-hosted-url:
+        description: URL of a private package host; its token is the secret PUB_HOSTED_TOKEN.
+        type: string
+        default: ''
+      pub-get-args:
+        description: Extra arguments for pub get, such as --enforce-lockfile.
+        type: string
+        default: ''
+      git-host:
+        description: Host of private git dependencies; its token is the secret GIT_DEPS_TOKEN.
+        type: string
+        default: github.com
+
+      # Toolchain.
+      toolchain:
+        description: dart or flutter.
+        type: string
+        default: dart
+      sdks:
+        description: JSON array of SDKs to test with (Flutter versions for flutter); stable, beta, lowest (the lower bound of the environment constraint) or a version.
+        type: string
+        default: '["stable","lowest"]'
+      flutter-version-file:
+        description: File to read the Flutter version from (pubspec.yaml or .fvmrc); wins over sdks.
+        type: string
+        default: ''
+      os:
+        description: JSON array of operating systems (ubuntu, ubuntu-arm, macos, windows, windows-arm).
+        type: string
+        default: '["ubuntu"]'
+      extra-os-sdk:
+        description: first (other operating systems only test the first SDK) or all.
+        type: string
+        default: first
+
+      # Static checks.
+      format-enabled:
+        description: Check the formatting.
+        type: boolean
+        default: true
+      format-command:
+        description: Replaces dart format --output=none --set-exit-if-changed .
+        type: string
+        default: ''
+      analyze-enabled:
+        description: Run the analyzer.
+        type: boolean
+        default: true
+      analyze-fatal-infos:
+        description: Fail on infos as well.
+        type: boolean
+        default: true
+      analyze-command:
+        description: Replaces the analyzer run (dart analyze or flutter analyze per package).
+        type: string
+        default: ''
+      build-runner-enabled:
+        description: true, false or auto (packages with build_runner); checks that the generated files are committed.
+        type: string
+        default: auto
+      build-runner-command:
+        description: Replaces dart run build_runner build --delete-conflicting-outputs.
+        type: string
+        default: ''
+      l10n-enabled:
+        description: true, false or auto (packages with l10n.yaml); checks that flutter gen-l10n output is committed.
+        type: string
+        default: auto
+      publish-dry-run-enabled:
+        description: true, false or auto (publishable packages); runs pub publish --dry-run.
+        type: string
+        default: auto
+
+      # Tests.
+      test-enabled:
+        description: Run the tests.
+        type: boolean
+        default: true
+      test-platforms:
+        description: JSON array of dart test platforms (vm, chrome, firefox, node, chrome:dart2wasm); empty uses dart_test.yaml.
+        type: string
+        default: ''
+      test-command:
+        description: Replaces the test command; runs in every package directory with PACKAGE_NAME and PACKAGE_PATH set.
+        type: string
+        default: ''
+      test-args:
+        description: Extra arguments for dart test or flutter test.
+        type: string
+        default: ''
+      test-exclude-tags:
+        description: Tags to skip.
+        type: string
+        default: ''
+      test-report-enabled:
+        description: Upload JSON test reports (artifacts davils-test-reports-*); test-report.yml turns them into a check run.
+        type: boolean
+        default: false
+      golden-enabled:
+        description: Flutter only. Run the golden tests (tag golden-tags) on golden-os, where the goldens were recorded.
+        type: boolean
+        default: false
+      golden-os:
+        description: Operating system of the golden tests.
+        type: string
+        default: macos
+      golden-tags:
+        description: Tag of the golden tests; the regular test jobs skip it when golden-enabled.
+        type: string
+        default: golden
+      integration-test-enabled:
+        description: Flutter only. Run integration_test/ on a desktop device.
+        type: boolean
+        default: false
+      integration-test-device:
+        description: auto (linux with a virtual display), linux, macos or windows.
+        type: string
+        default: auto
+
+      # Coverage.
+      coverage-enabled:
+        description: Collect coverage in the first test job of every package.
+        type: boolean
+        default: true
+      coverage-source:
+        description: auto (leave packages whose Inspectra coverage gate is on to Inspectra), ci (always here), inspectra or none.
+        type: string
+        default: auto
+      inspectra-enabled:
+        description: true when the inspectra workflow runs in the same pipeline (for coverage-source auto).
+        type: boolean
+        default: false
+      coverage-min:
+        description: Minimum total line coverage in percent; 0 disables the check.
+        type: number
+        default: 0
+      codecov-enabled:
+        description: Upload the coverage to Codecov; private repositories need the secret CODECOV_TOKEN.
+        type: boolean
+        default: false
+      pages-part-enabled:
+        description: Upload the HTML coverage report as a part of the GitHub Pages site (pages.yml).
+        type: boolean
+        default: false
+
+      # Optional jobs.
+      pana-enabled:
+        description: Dart only. Score the publishable packages with pana.
+        type: boolean
+        default: false
+      pana-min-points:
+        description: Minimum pana points; 0 only reports.
+        type: number
+        default: 0
+      downgrade-enabled:
+        description: Resolve the lowest allowed dependency versions and analyze and test against them.
+        type: boolean
+        default: false
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
+
+    outputs:
+      coverage:
+        description: The total line coverage in percent.
+        value: ${{ jobs.coverage.outputs.percent }}
+      discovery:
+        description: The discovered packages.
+        value: ${{ jobs.plan.outputs.discovery }}
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    outputs:
+      discovery: ${{ steps.discover.outputs.discovery }}
+      matrix: ${{ steps.test-matrix.outputs.matrix }}
+      count: ${{ steps.test-matrix.outputs.count }}
+      packages: ${{ steps.all.outputs.packages }}
+      package-count: ${{ steps.all.outputs.package-count }}
+      primary-sdk: ${{ steps.sdks.outputs.primary }}
+      lowest-sdk: ${{ steps.sdks.outputs.lowest }}
+      golden-runner: ${{ steps.sdks.outputs.golden-runner }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner && runner.os == 'Linux'
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Discover the packages
+        id: discover
+        uses: $/actions/discover-packages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          include: ${{ inputs.include }}
+          exclude: ${{ inputs.exclude }}
+          affected-only: ${{ inputs.affected-only }}
+          base-sha: ${{ inputs.base-sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          always-all-paths: ${{ inputs.always-all-paths }}
+
+      # One matrix for the test jobs, one list for the static checks of all affected packages.
+      - name: Build the test matrix
+        id: test-matrix
+        uses: $/actions/build-matrix
+        with:
+          discovery: ${{ steps.discover.outputs.discovery }}
+          affected: ${{ steps.discover.outputs.affected }}
+          toolchain: ${{ inputs.toolchain }}
+          select: tests
+          sdks: ${{ inputs.sdks }}
+          os: ${{ inputs.os }}
+          extra-os-sdk: ${{ inputs.extra-os-sdk }}
+          granularity: ${{ inputs.granularity }}
+          shards: ${{ inputs.shards }}
+          shard-threshold: ${{ inputs.shard-threshold }}
+          runners: ${{ inputs.runners }}
+
+      - name: Select the packages
+        id: all
+        uses: $/actions/build-matrix
+        with:
+          discovery: ${{ steps.discover.outputs.discovery }}
+          affected: ${{ steps.discover.outputs.affected }}
+          toolchain: ${{ inputs.toolchain }}
+          granularity: workspace
+
+      - name: Pick the SDKs
+        id: sdks
+        shell: bash
+        env:
+          DISCOVERY: ${{ steps.discover.outputs.discovery }}
+          TOOLCHAIN: ${{ inputs.toolchain }}
+          SDKS: ${{ inputs.sdks }}
+          RUNNERS: ${{ inputs.runners }}
+          GOLDEN_OS: ${{ inputs.golden-os }}
+        run: |
+          # The static checks run on the first SDK of the list, unless that is lowest.
+          {
+            echo "primary=$(jq -r 'map(select(. != "lowest")) | first // "stable"' <<<"$SDKS")"
+            echo "lowest=$(jq -r --arg t "$TOOLCHAIN" '
+              if $t == "flutter" then (.workspace.flutter_lower // ([.packages[].flutter_lower | select(. != null)] | first))
+              else (.workspace.sdk_lower // ([.packages[].sdk_lower | select(. != null)] | first)) end // "stable"' <<<"$DISCOVERY")"
+            echo "golden-runner=$(jq -c --arg os "$GOLDEN_OS" '
+              ({linux: "ubuntu-latest", macos: "macos-latest", windows: "windows-latest"} + .) as $r
+              | if $os == "ubuntu" then $r.linux elif $os == "macos" then $r.macos else $r.windows end' <<<"$RUNNERS")"
+          } >>"$GITHUB_OUTPUT"
+
+  static:
+    name: Format and analyze
+    needs: plan
+    if: needs.plan.outputs.package-count != '0'
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    env:
+      PACKAGES: ${{ needs.plan.outputs.packages }}
+      TOOLCHAIN: ${{ inputs.toolchain }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner && runner.os == 'Linux'
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Dart
+        if: inputs.toolchain == 'dart'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ needs.plan.outputs.primary-sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ needs.plan.outputs.packages }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Flutter
+        if: inputs.toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ needs.plan.outputs.primary-sdk }}
+          version-file: ${{ inputs.flutter-version-file }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ needs.plan.outputs.packages }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Check the formatting
+        if: inputs.format-enabled
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          COMMAND: ${{ inputs.format-command }}
+        run: |
+          if [[ -n "$COMMAND" ]]; then
+            bash -euo pipefail -c "$COMMAND"
+          else
+            dart format --output=none --set-exit-if-changed .
+          fi
+
+      # Every package on its own: a package outside the workspace has its own resolution, and
+      # analyzing the root would report its imports as unresolved. Root level sources of a
+      # workspace (tool/, bin/, test/) are analyzed as well.
+      - name: Analyze
+        if: inputs.analyze-enabled && !cancelled()
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          COMMAND: ${{ inputs.analyze-command }}
+          FATAL_INFOS: ${{ inputs.analyze-fatal-infos }}
+        run: |
+          if [[ -n "$COMMAND" ]]; then
+            bash -euo pipefail -c "$COMMAND"
+            exit 0
+          fi
+          flags=()
+          [[ "$FATAL_INFOS" == true ]] && flags+=(--fatal-infos)
+          targets="$(jq -r '.[].path' <<<"$PACKAGES")"
+          if jq -e 'any(.[]; .workspace)' <<<"$PACKAGES" >/dev/null; then
+            for dir in tool bin lib test; do
+              [[ -d "$dir" ]] && targets+=$'\n'"$dir"
+            done
+          fi
+          failed=()
+          while IFS= read -r target; do
+            [[ -z "$target" ]] && continue
+            echo "::group::Analyze $target"
+            if [[ "$TOOLCHAIN" == flutter ]]; then
+              (cd "$target" && flutter analyze "${flags[@]}") || failed+=("$target")
+            else
+              dart analyze "${flags[@]}" "$target" || failed+=("$target")
+            fi
+            echo "::endgroup::"
+          done <<<"$targets"
+          if ((${#failed[@]} > 0)); then
+            echo "::error::The analyzer reported problems in: ${failed[*]}."
+            exit 1
+          fi
+
+      - name: Check the generated sources
+        if: ${{ !contains(fromJSON('["false","off","no"]'), inputs.build-runner-enabled) && !cancelled() }}
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          COMMAND: ${{ inputs.build-runner-command }}
+          FORCE: ${{ contains(fromJSON('["true","on","yes"]'), inputs.build-runner-enabled) }}
+        run: |
+          ran=false
+          while IFS= read -r package; do
+            path="$(jq -r '.path' <<<"$package")"
+            if [[ "$FORCE" != true && "$(jq -r '.has_build_runner' <<<"$package")" != true ]]; then
+              continue
+            fi
+            echo "::group::build_runner ($path)"
+            if [[ -n "$COMMAND" ]]; then
+              (cd "$path" && bash -euo pipefail -c "$COMMAND")
+            elif [[ "$TOOLCHAIN" == flutter ]]; then
+              (cd "$path" && flutter pub run build_runner build --delete-conflicting-outputs)
+            else
+              (cd "$path" && dart run build_runner build --delete-conflicting-outputs)
+            fi
+            echo "::endgroup::"
+            ran=true
+          done < <(jq -c '.[]' <<<"$PACKAGES")
+          if [[ "$ran" == true ]] && ! git diff --exit-code --stat; then
+            echo "::error::build_runner changed files; run it and commit the result."
+            exit 1
+          fi
+
+      - name: Check the localizations
+        if: ${{ inputs.toolchain == 'flutter' && !contains(fromJSON('["false","off","no"]'), inputs.l10n-enabled) && !cancelled() }}
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          FORCE: ${{ contains(fromJSON('["true","on","yes"]'), inputs.l10n-enabled) }}
+        run: |
+          ran=false
+          while IFS= read -r package; do
+            path="$(jq -r '.path' <<<"$package")"
+            [[ "$FORCE" != true && "$(jq -r '.has_l10n' <<<"$package")" != true ]] && continue
+            (cd "$path" && flutter gen-l10n)
+            ran=true
+          done < <(jq -c '.[]' <<<"$PACKAGES")
+          if [[ "$ran" == true ]] && ! git diff --exit-code --stat; then
+            echo "::error::flutter gen-l10n changed files; run it and commit the result."
+            exit 1
+          fi
+
+      - name: Dry run of the publication
+        if: ${{ !contains(fromJSON('["false","off","no"]'), inputs.publish-dry-run-enabled) && !cancelled() }}
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          failed=()
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            echo "::group::pub publish --dry-run ($path)"
+            if [[ "$TOOLCHAIN" == flutter ]]; then
+              (cd "$path" && flutter pub publish --dry-run) || failed+=("$path")
+            else
+              (cd "$path" && dart pub publish --dry-run) || failed+=("$path")
+            fi
+            echo "::endgroup::"
+          done < <(jq -r '.[] | select(.publishable) | .path' <<<"$PACKAGES")
+          if ((${#failed[@]} > 0)); then
+            echo "::error::pub publish --dry-run failed for: ${failed[*]}."
+            exit 1
+          fi
+
+  test:
+    name: Test ${{ matrix.label }}
+    needs: plan
+    if: inputs.test-enabled && needs.plan.outputs.count != '0'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner && runner.os == 'Linux'
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Dart ${{ matrix.sdk }}
+        if: inputs.toolchain == 'dart'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ matrix.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(matrix.packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Flutter ${{ matrix.sdk }}
+        if: inputs.toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ matrix.sdk }}
+          version-file: ${{ matrix.primary && inputs.flutter-version-file || '' }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(matrix.packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Test
+        id: test
+        uses: $/actions/test-packages
+        with:
+          tool: ${{ inputs.toolchain }}
+          packages: ${{ toJSON(matrix.packages) }}
+          working-directory: ${{ inputs.working-directory }}
+          platforms: ${{ inputs.test-platforms }}
+          command: ${{ inputs.test-command }}
+          args: ${{ inputs.test-args }}
+          exclude-tags: ${{ inputs.golden-enabled && inputs.golden-tags || inputs.test-exclude-tags }}
+          coverage: ${{ inputs.coverage-enabled && matrix.primary }}
+          coverage-source: ${{ inputs.coverage-source }}
+          inspectra-enabled: ${{ inputs.inspectra-enabled }}
+          report: ${{ inputs.test-report-enabled }}
+          pre-test: ${{ inputs.pre-test }}
+          post-test: ${{ inputs.post-test }}
+
+      - name: Upload the coverage
+        if: always() && inputs.coverage-enabled && matrix.primary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-coverage-${{ inputs.toolchain }}-${{ matrix.id }}
+          path: ${{ steps.test.outputs.output-directory }}/coverage/
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      - name: Upload the test reports
+        if: always() && inputs.test-report-enabled
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-test-reports-${{ inputs.toolchain }}-${{ matrix.id }}-${{ matrix.os }}-${{ matrix.sdk_label }}
+          path: ${{ steps.test.outputs.output-directory }}/reports/
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+  coverage:
+    name: Coverage
+    needs: [plan, test]
+    if: ${{ !cancelled() && inputs.coverage-enabled && needs.test.result != 'skipped' }}
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+
+    outputs:
+      percent: ${{ steps.collect.outputs.percent }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the coverage
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: davils-coverage-${{ inputs.toolchain }}-*
+          path: ${{ runner.temp }}/davils-lcov
+          merge-multiple: true
+
+      - name: Collect the coverage
+        id: collect
+        uses: $/actions/coverage-collect
+        with:
+          input-directory: ${{ runner.temp }}/davils-lcov
+          output-directory: ${{ runner.temp }}/davils-coverage
+          min: ${{ inputs.coverage-min }}
+          html: ${{ inputs.pages-part-enabled }}
+
+      # Public repositories upload without a token; private ones need the secret CODECOV_TOKEN.
+      - name: Upload the coverage to Codecov
+        if: inputs.codecov-enabled && steps.collect.outputs.percent != ''
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ${{ steps.collect.outputs.lcov }}
+          flags: ${{ inputs.toolchain }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Mark the Pages part
+        if: inputs.pages-part-enabled && steps.collect.outputs.percent != ''
+        shell: bash
+        env:
+          OUT: ${{ runner.temp }}/davils-coverage/html
+          TOOLCHAIN: ${{ inputs.toolchain }}
+        run: |
+          if [[ -d "$OUT" ]]; then
+            jq -cn --arg id "$TOOLCHAIN" '{part: "coverage", id: $id}' >"$OUT/.davils-part.json"
+          fi
+
+      - name: Upload the Pages part
+        if: inputs.pages-part-enabled && steps.collect.outputs.percent != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-pages-coverage-${{ inputs.toolchain }}
+          path: ${{ runner.temp }}/davils-coverage/html/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+  golden:
+    name: Golden tests
+    needs: plan
+    if: inputs.toolchain == 'flutter' && inputs.golden-enabled && needs.plan.outputs.package-count != '0'
+    runs-on: ${{ fromJSON(needs.plan.outputs.golden-runner) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Flutter
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ needs.plan.outputs.primary-sdk }}
+          version-file: ${{ inputs.flutter-version-file }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ needs.plan.outputs.packages }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Run the golden tests
+        uses: $/actions/test-packages
+        with:
+          tool: flutter
+          packages: ${{ needs.plan.outputs.packages }}
+          working-directory: ${{ inputs.working-directory }}
+          args: --tags ${{ inputs.golden-tags }}
+
+  integration:
+    name: Integration tests
+    needs: plan
+    if: inputs.toolchain == 'flutter' && inputs.integration-test-enabled && needs.plan.outputs.package-count != '0'
+    runs-on: ${{ (inputs.integration-test-device == 'macos' && (fromJSON(inputs.runners).macos || 'macos-latest')) || (inputs.integration-test-device == 'windows' && (fromJSON(inputs.runners).windows || 'windows-latest')) || (fromJSON(inputs.runners).linux || 'ubuntu-latest') }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Flutter
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ needs.plan.outputs.primary-sdk }}
+          version-file: ${{ inputs.flutter-version-file }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ needs.plan.outputs.packages }}
+          linux-desktop: 'true'
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Run the integration tests
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+          DEVICE: ${{ inputs.integration-test-device }}
+        run: |
+          case "$DEVICE" in
+            auto | linux) device=linux ;;
+            *) device="$DEVICE" ;;
+          esac
+          failed=()
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            echo "::group::Integration tests ($path)"
+            if [[ "$device" == linux ]]; then
+              (cd "$path" && xvfb-run -a flutter test integration_test -d linux) || failed+=("$path")
+            else
+              (cd "$path" && flutter test integration_test -d "$device") || failed+=("$path")
+            fi
+            echo "::endgroup::"
+          done < <(jq -r '.[] | select(.has_integration_tests) | .path' <<<"$PACKAGES")
+          if ((${#failed[@]} > 0)); then
+            echo "::error::Integration tests failed in: ${failed[*]}."
+            exit 1
+          fi
+
+  downgrade:
+    name: Lowest dependencies
+    needs: plan
+    if: inputs.downgrade-enabled && needs.plan.outputs.package-count != '0'
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Dart
+        if: inputs.toolchain == 'dart'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ needs.plan.outputs.lowest-sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          resolve: 'false'
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+
+      - name: Set up Flutter
+        if: inputs.toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ needs.plan.outputs.lowest-sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          resolve: 'false'
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+
+      - name: Resolve the lowest versions
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+          TOOLCHAIN: ${{ inputs.toolchain }}
+        run: |
+          dirs="$(jq -r '(if any(.[]; .workspace) then ["."] else [] end) + [.[] | select(.workspace | not) | .path] | unique | .[]' <<<"$PACKAGES")"
+          for dir in $dirs; do
+            (cd "$dir" && "$TOOLCHAIN" pub downgrade)
+          done
+          while IFS= read -r path; do
+            echo "::group::Analyze $path"
+            if [[ "$TOOLCHAIN" == flutter ]]; then (cd "$path" && flutter analyze); else dart analyze "$path"; fi
+            echo "::endgroup::"
+          done < <(jq -r '.[].path' <<<"$PACKAGES")
+
+      - name: Test against the lowest versions
+        uses: $/actions/test-packages
+        with:
+          tool: ${{ inputs.toolchain }}
+          packages: ${{ needs.plan.outputs.packages }}
+          working-directory: ${{ inputs.working-directory }}
+          args: ${{ inputs.test-args }}
+          exclude-tags: ${{ inputs.golden-enabled && inputs.golden-tags || inputs.test-exclude-tags }}
+
+  pana:
+    name: Package score
+    needs: plan
+    if: inputs.toolchain == 'dart' && inputs.pana-enabled && needs.plan.outputs.package-count != '0'
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Dart
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ needs.plan.outputs.primary-sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ needs.plan.outputs.packages }}
+
+      - name: Score the packages
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+          MIN_POINTS: ${{ inputs.pana-min-points }}
+        run: |
+          dart pub global activate pana >/dev/null
+          {
+            echo "### pana"
+            echo
+            echo "| Package | Points |"
+            echo "|---|---|"
+          } >>"$GITHUB_STEP_SUMMARY"
+          failed=()
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            report="$RUNNER_TEMP/pana-$(basename "$path").json"
+            dart pub global run pana --json --no-warning "$path" >"$report" || true
+            granted="$(jq -r '.scores.grantedPoints // 0' "$report")"
+            max="$(jq -r '.scores.maxPoints // 0' "$report")"
+            echo "| $(basename "$path") | $granted / $max |" >>"$GITHUB_STEP_SUMMARY"
+            if ((MIN_POINTS > 0 && granted < MIN_POINTS)); then
+              failed+=("$path ($granted)")
+            fi
+          done < <(jq -r '.[] | select(.publishable) | .path' <<<"$PACKAGES")
+          if ((${#failed[@]} > 0)); then
+            echo "::error::Below $MIN_POINTS pana points: ${failed[*]}."
+            exit 1
+          fi

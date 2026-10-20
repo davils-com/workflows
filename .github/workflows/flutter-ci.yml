@@ -1,0 +1,312 @@
+name: Flutter CI
+
+# Format, analyze, test and coverage of every Flutter package of a repository, plus golden tests,
+# integration tests on a desktop device and the check of generated localizations. This file only
+# passes its inputs on to dart-ci.yml with `toolchain: flutter`.
+#
+# Generated from the inputs of dart-ci.yml by tools/gen-flutter-ci.sh. Do not edit by hand.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory of the root pubspec.yaml, relative to the repository root."
+        type: string
+        default: .
+      discovery:
+        description: "Packages discovered before (pipeline.yml passes its own); empty discovers them here."
+        type: string
+        default: ''
+      include:
+        description: "Globs of package directories outside the workspace (newline or comma separated, or a JSON array)."
+        type: string
+        default: ''
+      exclude:
+        description: "Globs of package directories to leave out."
+        type: string
+        default: ''
+      affected-only:
+        description: "true, false or auto (auto checks only the packages a pull request or merge group affects)."
+        type: string
+        default: auto
+      base-sha:
+        description: "The commit to compare with for affected-only; empty takes it from the event."
+        type: string
+        default: ''
+      always-all-paths:
+        description: "Globs relative to the working directory whose change affects every package."
+        type: string
+        default: '["pubspec.yaml","pubspec.lock","analysis_options.yaml","dart_test.yaml","inspectra.yaml","inspectra.base.yaml","trivy*.yaml","tool/**",".github/**"]'
+      granularity:
+        description: "auto, package, workspace or shards; how packages spread over test jobs."
+        type: string
+        default: auto
+      shards:
+        description: "Number of test jobs for granularity shards."
+        type: number
+        default: 8
+      shard-threshold:
+        description: "Package count from which granularity auto shards."
+        type: number
+        default: 20
+      runners:
+        description: "JSON object of runner labels (linux, linux-arm, macos, windows, windows-arm); a JSON array value selects self-hosted runners."
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: "Timeout of every job."
+        type: number
+        default: 45
+      harden-runner:
+        description: "Run step-security/harden-runner first on Linux runners."
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: "audit or block."
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: "Endpoints allowed with the block policy, space separated."
+        type: string
+        default: ''
+      pre-setup:
+        description: "Shell commands run in every job before any tool is set up."
+        type: string
+        default: ''
+      post-setup:
+        description: "Shell commands run in every job after the dependencies are resolved."
+        type: string
+        default: ''
+      pre-test:
+        description: "Shell commands run before the tests of every test job."
+        type: string
+        default: ''
+      post-test:
+        description: "Shell commands run after the tests of every test job, also when they failed."
+        type: string
+        default: ''
+      artifact-retention-days:
+        description: "Days to keep the artifacts."
+        type: number
+        default: 7
+      fail-fast:
+        description: "Cancel the other test jobs when one fails."
+        type: boolean
+        default: false
+      pub-hosted-url:
+        description: "URL of a private package host; its token is the secret PUB_HOSTED_TOKEN."
+        type: string
+        default: ''
+      pub-get-args:
+        description: "Extra arguments for pub get, such as --enforce-lockfile."
+        type: string
+        default: ''
+      git-host:
+        description: "Host of private git dependencies; its token is the secret GIT_DEPS_TOKEN."
+        type: string
+        default: github.com
+      flutter-versions:
+        description: "JSON array of Flutter versions to test with: stable, beta, lowest (the lower bound of environment.flutter) or a version."
+        type: string
+        default: '["stable"]'
+      flutter-version-file:
+        description: "File to read the Flutter version from (pubspec.yaml or .fvmrc); wins over sdks."
+        type: string
+        default: ''
+      os:
+        description: "JSON array of operating systems (ubuntu, ubuntu-arm, macos, windows, windows-arm)."
+        type: string
+        default: '["ubuntu"]'
+      extra-os-sdk:
+        description: "first (other operating systems only test the first SDK) or all."
+        type: string
+        default: first
+      format-enabled:
+        description: "Check the formatting."
+        type: boolean
+        default: true
+      format-command:
+        description: "Replaces dart format --output=none --set-exit-if-changed ."
+        type: string
+        default: ''
+      analyze-enabled:
+        description: "Run the analyzer."
+        type: boolean
+        default: true
+      analyze-fatal-infos:
+        description: "Fail on infos as well."
+        type: boolean
+        default: true
+      analyze-command:
+        description: "Replaces flutter analyze per package."
+        type: string
+        default: ''
+      build-runner-enabled:
+        description: "true, false or auto (packages with build_runner); checks that the generated files are committed."
+        type: string
+        default: auto
+      build-runner-command:
+        description: "Replaces flutter pub run build_runner build --delete-conflicting-outputs."
+        type: string
+        default: ''
+      l10n-enabled:
+        description: "true, false or auto (packages with l10n.yaml); checks that flutter gen-l10n output is committed."
+        type: string
+        default: auto
+      publish-dry-run-enabled:
+        description: "true, false or auto (publishable packages); runs pub publish --dry-run."
+        type: string
+        default: auto
+      test-enabled:
+        description: "Run the tests."
+        type: boolean
+        default: true
+      test-command:
+        description: "Replaces the test command; runs in every package directory with PACKAGE_NAME and PACKAGE_PATH set."
+        type: string
+        default: ''
+      test-args:
+        description: "Extra arguments for dart test or flutter test."
+        type: string
+        default: ''
+      test-exclude-tags:
+        description: "Tags to skip."
+        type: string
+        default: ''
+      test-report-enabled:
+        description: "Upload JSON test reports (artifacts davils-test-reports-*); test-report.yml turns them into a check run."
+        type: boolean
+        default: false
+      golden-enabled:
+        description: "Flutter only. Run the golden tests (tag golden-tags) on golden-os, where the goldens were recorded."
+        type: boolean
+        default: false
+      golden-os:
+        description: "Operating system of the golden tests."
+        type: string
+        default: macos
+      golden-tags:
+        description: "Tag of the golden tests; the regular test jobs skip it when golden-enabled."
+        type: string
+        default: golden
+      integration-test-enabled:
+        description: "Flutter only. Run integration_test/ on a desktop device."
+        type: boolean
+        default: false
+      integration-test-device:
+        description: "auto (linux with a virtual display), linux, macos or windows."
+        type: string
+        default: auto
+      coverage-enabled:
+        description: "Collect coverage in the first test job of every package."
+        type: boolean
+        default: true
+      coverage-source:
+        description: "auto (leave packages whose Inspectra coverage gate is on to Inspectra), ci (always here), inspectra or none."
+        type: string
+        default: auto
+      inspectra-enabled:
+        description: "true when the inspectra workflow runs in the same pipeline (for coverage-source auto)."
+        type: boolean
+        default: false
+      coverage-min:
+        description: "Minimum total line coverage in percent; 0 disables the check."
+        type: number
+        default: 0
+      codecov-enabled:
+        description: "Upload the coverage to Codecov; private repositories need the secret CODECOV_TOKEN."
+        type: boolean
+        default: false
+      pages-part-enabled:
+        description: "Upload the HTML coverage report as a part of the GitHub Pages site (pages.yml)."
+        type: boolean
+        default: false
+      downgrade-enabled:
+        description: "Resolve the lowest allowed dependency versions and analyze and test against them."
+        type: boolean
+        default: false
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
+
+    outputs:
+      coverage:
+        description: The total line coverage in percent.
+        value: ${{ jobs.flutter.outputs.coverage }}
+      discovery:
+        description: The discovered packages.
+        value: ${{ jobs.flutter.outputs.discovery }}
+
+permissions: {}
+
+jobs:
+  flutter:
+    name: Flutter
+    uses: $/.github/workflows/dart-ci.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    with:
+      toolchain: flutter
+      working-directory: ${{ inputs.working-directory }}
+      discovery: ${{ inputs.discovery }}
+      include: ${{ inputs.include }}
+      exclude: ${{ inputs.exclude }}
+      affected-only: ${{ inputs.affected-only }}
+      base-sha: ${{ inputs.base-sha }}
+      always-all-paths: ${{ inputs.always-all-paths }}
+      granularity: ${{ inputs.granularity }}
+      shards: ${{ inputs.shards }}
+      shard-threshold: ${{ inputs.shard-threshold }}
+      runners: ${{ inputs.runners }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      harden-runner: ${{ inputs.harden-runner }}
+      harden-runner-egress-policy: ${{ inputs.harden-runner-egress-policy }}
+      harden-runner-allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+      pre-setup: ${{ inputs.pre-setup }}
+      post-setup: ${{ inputs.post-setup }}
+      pre-test: ${{ inputs.pre-test }}
+      post-test: ${{ inputs.post-test }}
+      artifact-retention-days: ${{ inputs.artifact-retention-days }}
+      fail-fast: ${{ inputs.fail-fast }}
+      pub-hosted-url: ${{ inputs.pub-hosted-url }}
+      pub-get-args: ${{ inputs.pub-get-args }}
+      git-host: ${{ inputs.git-host }}
+      sdks: ${{ inputs.flutter-versions }}
+      flutter-version-file: ${{ inputs.flutter-version-file }}
+      os: ${{ inputs.os }}
+      extra-os-sdk: ${{ inputs.extra-os-sdk }}
+      format-enabled: ${{ inputs.format-enabled }}
+      format-command: ${{ inputs.format-command }}
+      analyze-enabled: ${{ inputs.analyze-enabled }}
+      analyze-fatal-infos: ${{ inputs.analyze-fatal-infos }}
+      analyze-command: ${{ inputs.analyze-command }}
+      build-runner-enabled: ${{ inputs.build-runner-enabled }}
+      build-runner-command: ${{ inputs.build-runner-command }}
+      l10n-enabled: ${{ inputs.l10n-enabled }}
+      publish-dry-run-enabled: ${{ inputs.publish-dry-run-enabled }}
+      test-enabled: ${{ inputs.test-enabled }}
+      test-command: ${{ inputs.test-command }}
+      test-args: ${{ inputs.test-args }}
+      test-exclude-tags: ${{ inputs.test-exclude-tags }}
+      test-report-enabled: ${{ inputs.test-report-enabled }}
+      golden-enabled: ${{ inputs.golden-enabled }}
+      golden-os: ${{ inputs.golden-os }}
+      golden-tags: ${{ inputs.golden-tags }}
+      integration-test-enabled: ${{ inputs.integration-test-enabled }}
+      integration-test-device: ${{ inputs.integration-test-device }}
+      coverage-enabled: ${{ inputs.coverage-enabled }}
+      coverage-source: ${{ inputs.coverage-source }}
+      inspectra-enabled: ${{ inputs.inspectra-enabled }}
+      coverage-min: ${{ inputs.coverage-min }}
+      codecov-enabled: ${{ inputs.codecov-enabled }}
+      pages-part-enabled: ${{ inputs.pages-part-enabled }}
+      downgrade-enabled: ${{ inputs.downgrade-enabled }}

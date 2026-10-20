@@ -1,0 +1,15 @@
+# A pub workspace whose members are published to pub.dev one by one with <package>-v<version> tags.
+packages:
+  affected-only: auto
+dart:
+  publish-dry-run:
+    enabled: auto
+dartdoc:
+  enabled: auto
+inspectra:
+  check:
+    root: true
+release:
+  mode: tag
+  pub:
+    enabled: auto

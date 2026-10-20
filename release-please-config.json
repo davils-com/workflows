@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "bump-minor-pre-major": true,
+  "changelog-sections": [
+    { "type": "feat", "section": "Added" },
+    { "type": "fix", "section": "Fixed" },
+    { "type": "perf", "section": "Changed" },
+    { "type": "refactor", "section": "Changed" },
+    { "type": "deps", "section": "Dependencies" },
+    { "type": "docs", "section": "Documentation", "hidden": false },
+    { "type": "chore", "section": "Maintenance", "hidden": true },
+    { "type": "ci", "section": "Maintenance", "hidden": true },
+    { "type": "test", "section": "Maintenance", "hidden": true }
+  ],
+  "packages": {
+    ".": {
+      "package-name": "workflows",
+      "extra-files": ["README.md", "docs/v.list"]
+    }
+  }
+}

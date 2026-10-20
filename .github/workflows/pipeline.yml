@@ -1,0 +1,660 @@
+name: Pipeline
+
+# One workflow for everything: it reads .github/davils-ci.yaml (optional), finds the packages and
+# decides per event what runs, then calls the other workflows of davils-com/workflows:
+#
+#   pr-lint         pull request title and source branch
+#   dart, flutter   format, analyze, test, coverage
+#   inspectra       Inspectra checks and scans
+#   writerside      Writerside documentation
+#   dartdoc         API documentation
+#   flutter-build   app builds
+#   dart-compile    native executables
+#   pages           the GitHub Pages site from all of the above
+#   test-report     test results as a check run
+#   release-please  release pull requests
+#   release         the tag-driven release: pub.dev and the GitHub release
+#   gate            the one status check to require in branch protection: "Pipeline / Gate"
+#
+# Configuration, lowest first: the defaults, preset, the file, `config`, the typed inputs below.
+# A typed input left empty changes nothing. Every option is in schemas/davils-ci.schema.json.
+#
+# GitHub checks the permissions of every job a workflow could run before it starts, so the caller
+# grants the union of them (see examples/minimal). A repository that wants less calls the
+# workflows one by one (see examples/granular).
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: Path of the configuration file relative to the repository root; empty means .github/davils-ci.yaml when it exists, none ignores any file.
+        type: string
+        default: ''
+      config:
+        description: Inline configuration as YAML or JSON; wins over the file.
+        type: string
+        default: ''
+      preset:
+        description: library, workspace, flutter-app, cli or docs; applied below the file.
+        type: string
+        default: ''
+      working-directory:
+        description: Directory of the root pubspec.yaml; wins over project.working-directory.
+        type: string
+        default: ''
+      dart:
+        description: true, false or auto; wins over dart.enabled.
+        type: string
+        default: ''
+      flutter:
+        description: true, false or auto; wins over flutter.enabled.
+        type: string
+        default: ''
+      inspectra:
+        description: true, false or auto; wins over inspectra.enabled.
+        type: string
+        default: ''
+      writerside:
+        description: true, false or auto; wins over writerside.enabled.
+        type: string
+        default: ''
+      dartdoc:
+        description: true, false or auto; wins over dartdoc.enabled.
+        type: string
+        default: ''
+      pages:
+        description: true, false or auto; wins over pages.enabled.
+        type: string
+        default: ''
+      flutter-build:
+        description: true, false or auto; wins over build.flutter.enabled.
+        type: string
+        default: ''
+      dart-compile:
+        description: true, false or auto; wins over build.dart-compile.enabled.
+        type: string
+        default: ''
+      pr-lint:
+        description: true or false; wins over pr.title.enabled and pr.branch-policy.enabled.
+        type: string
+        default: ''
+      release:
+        description: none, tag, release-please or auto; wins over release.mode.
+        type: string
+        default: ''
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
+      ALGOLIA_KEY:
+        required: false
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+      APPLE_CERTIFICATE_P12_BASE64:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_PROVISIONING_PROFILES_BASE64:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      APP_STORE_CONNECT_KEY_ID:
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: false
+      APP_STORE_CONNECT_KEY_P8_BASE64:
+        required: false
+      RELEASE_APP_ID:
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        required: false
+      RELEASE_PLEASE_TOKEN:
+        required: false
+
+    outputs:
+      config:
+        description: The resolved configuration as JSON.
+        value: ${{ jobs.config.outputs.config }}
+      run:
+        description: Which features ran, as JSON.
+        value: ${{ jobs.config.outputs.run }}
+      pages-url:
+        description: URL of the deployed GitHub Pages site.
+        value: ${{ jobs.pages.outputs.url }}
+
+permissions: {}
+
+jobs:
+  config:
+    name: Configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    outputs:
+      config: ${{ steps.resolve.outputs.config }}
+      run: ${{ steps.resolve.outputs.run }}
+      event: ${{ steps.resolve.outputs.event }}
+      discovery: ${{ steps.resolve.outputs.discovery }}
+      working-directory: ${{ steps.resolve.outputs.working-directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The typed inputs become the topmost configuration layer; empty ones are left out.
+      - name: Collect the typed inputs
+        id: overrides
+        shell: bash
+        env:
+          DART: ${{ inputs.dart }}
+          FLUTTER: ${{ inputs.flutter }}
+          INSPECTRA: ${{ inputs.inspectra }}
+          WRITERSIDE: ${{ inputs.writerside }}
+          DARTDOC: ${{ inputs.dartdoc }}
+          PAGES: ${{ inputs.pages }}
+          FLUTTER_BUILD: ${{ inputs.flutter-build }}
+          DART_COMPILE: ${{ inputs.dart-compile }}
+          PR_LINT: ${{ inputs.pr-lint }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          overrides="$(jq -cn '
+            def put($path; $value): if $value == "" then . else setpath($path; $value) end;
+            {}
+            | put(["dart", "enabled"]; env.DART)
+            | put(["flutter", "enabled"]; env.FLUTTER)
+            | put(["inspectra", "enabled"]; env.INSPECTRA)
+            | put(["writerside", "enabled"]; env.WRITERSIDE)
+            | put(["dartdoc", "enabled"]; env.DARTDOC)
+            | put(["pages", "enabled"]; env.PAGES)
+            | put(["build", "flutter", "enabled"]; env.FLUTTER_BUILD)
+            | put(["build", "dart-compile", "enabled"]; env.DART_COMPILE)
+            | put(["pr", "title", "enabled"]; env.PR_LINT)
+            | put(["pr", "branch-policy", "enabled"]; env.PR_LINT)
+            | put(["release", "mode"]; env.RELEASE)
+          ')"
+          echo "overrides=$overrides" >>"$GITHUB_OUTPUT"
+
+      - name: Resolve the configuration
+        id: resolve
+        uses: $/actions/resolve-config
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          config-file: ${{ inputs.config-file }}
+          config: ${{ inputs.config }}
+          preset: ${{ inputs.preset }}
+          overrides: ${{ steps.overrides.outputs.overrides }}
+          working-directory: ${{ inputs.working-directory }}
+          base-sha: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          base-ref: ${{ github.base_ref || github.event.merge_group.base_ref }}
+          is-fork: ${{ github.event.pull_request.head.repo.fork || false }}
+
+  pr-lint:
+    name: Pull request
+    needs: config
+    if: fromJSON(needs.config.outputs.run).pr-lint
+    uses: $/.github/workflows/pr-lint.yml
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      title-enabled: ${{ fromJSON(needs.config.outputs.config).pr.title.enabled }}
+      types: ${{ join(fromJSON(needs.config.outputs.config).pr.title.types, fromJSON('"\n"')) }}
+      scopes: ${{ fromJSON(needs.config.outputs.config).pr.title.scopes[0] && join(fromJSON(needs.config.outputs.config).pr.title.scopes, fromJSON('"\n"')) || 'auto' }}
+      require-scope: ${{ fromJSON(needs.config.outputs.config).pr.title.require-scope }}
+      subject-pattern: ${{ fromJSON(needs.config.outputs.config).pr.title.subject-pattern }}
+      branch-policy-enabled: ${{ fromJSON(needs.config.outputs.config).pr.branch-policy.enabled }}
+      release-branch: ${{ fromJSON(needs.config.outputs.config).project.release-branch }}
+      allowed-sources: ${{ toJSON(fromJSON(needs.config.outputs.config).pr.branch-policy.main-allowed-sources) }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+
+  dart:
+    name: Dart
+    needs: config
+    if: fromJSON(needs.config.outputs.run).dart
+    uses: $/.github/workflows/dart-ci.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    with:
+      toolchain: dart
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      affected-only: ${{ fromJSON(needs.config.outputs.config).packages.affected-only }}
+      always-all-paths: ${{ toJSON(fromJSON(needs.config.outputs.config).packages.always-all-paths) }}
+      granularity: ${{ fromJSON(needs.config.outputs.config).packages.granularity }}
+      shards: ${{ fromJSON(needs.config.outputs.config).packages.shards }}
+      shard-threshold: ${{ fromJSON(needs.config.outputs.config).packages.shard-threshold }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.ci }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
+      pre-test: ${{ fromJSON(needs.config.outputs.config).hooks.pre-test }}
+      post-test: ${{ fromJSON(needs.config.outputs.config).hooks.post-test }}
+      artifact-retention-days: ${{ fromJSON(needs.config.outputs.config).artifacts.retention-days }}
+      sdks: ${{ toJSON(fromJSON(needs.config.outputs.config).dart.sdks) }}
+      os: ${{ toJSON(fromJSON(needs.config.outputs.config).dart.os) }}
+      format-enabled: ${{ fromJSON(needs.config.outputs.config).dart.format.enabled }}
+      format-command: ${{ fromJSON(needs.config.outputs.config).dart.format.command }}
+      analyze-enabled: ${{ fromJSON(needs.config.outputs.config).dart.analyze.enabled }}
+      analyze-fatal-infos: ${{ fromJSON(needs.config.outputs.config).dart.analyze.fatal-infos }}
+      analyze-command: ${{ fromJSON(needs.config.outputs.config).dart.analyze.command }}
+      build-runner-enabled: ${{ fromJSON(needs.config.outputs.config).dart.build-runner.enabled }}
+      build-runner-command: ${{ fromJSON(needs.config.outputs.config).dart.build-runner.command }}
+      publish-dry-run-enabled: ${{ fromJSON(needs.config.outputs.config).dart.publish-dry-run.enabled }}
+      test-enabled: ${{ fromJSON(needs.config.outputs.config).dart.test.enabled }}
+      test-platforms: ${{ toJSON(fromJSON(needs.config.outputs.config).dart.test.platforms) }}
+      test-command: ${{ fromJSON(needs.config.outputs.config).dart.test.command }}
+      test-args: ${{ fromJSON(needs.config.outputs.config).dart.test.args }}
+      test-report-enabled: ${{ fromJSON(needs.config.outputs.config).dart.test.report }}
+      coverage-enabled: ${{ fromJSON(needs.config.outputs.config).dart.coverage.enabled }}
+      coverage-source: ${{ fromJSON(needs.config.outputs.config).dart.coverage.source }}
+      coverage-min: ${{ fromJSON(needs.config.outputs.config).dart.coverage.min }}
+      codecov-enabled: ${{ fromJSON(needs.config.outputs.config).dart.coverage.codecov }}
+      inspectra-enabled: ${{ fromJSON(needs.config.outputs.run).inspectra }}
+      pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.coverage }}
+      pana-enabled: ${{ fromJSON(needs.config.outputs.config).dart.pana.enabled }}
+      pana-min-points: ${{ fromJSON(needs.config.outputs.config).dart.pana.min-points }}
+      downgrade-enabled: ${{ fromJSON(needs.config.outputs.config).dart.downgrade.enabled }}
+
+  flutter:
+    name: Flutter
+    needs: config
+    if: fromJSON(needs.config.outputs.run).flutter
+    uses: $/.github/workflows/flutter-ci.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      affected-only: ${{ fromJSON(needs.config.outputs.config).packages.affected-only }}
+      always-all-paths: ${{ toJSON(fromJSON(needs.config.outputs.config).packages.always-all-paths) }}
+      granularity: ${{ fromJSON(needs.config.outputs.config).packages.granularity }}
+      shards: ${{ fromJSON(needs.config.outputs.config).packages.shards }}
+      shard-threshold: ${{ fromJSON(needs.config.outputs.config).packages.shard-threshold }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.ci }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
+      pre-test: ${{ fromJSON(needs.config.outputs.config).hooks.pre-test }}
+      post-test: ${{ fromJSON(needs.config.outputs.config).hooks.post-test }}
+      artifact-retention-days: ${{ fromJSON(needs.config.outputs.config).artifacts.retention-days }}
+      flutter-versions: ${{ toJSON(fromJSON(needs.config.outputs.config).flutter.versions) }}
+      flutter-version-file: ${{ fromJSON(needs.config.outputs.config).flutter.version-file }}
+      os: ${{ toJSON(fromJSON(needs.config.outputs.config).flutter.os) }}
+      format-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.format.enabled }}
+      format-command: ${{ fromJSON(needs.config.outputs.config).flutter.format.command }}
+      analyze-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.analyze.enabled }}
+      analyze-fatal-infos: ${{ fromJSON(needs.config.outputs.config).flutter.analyze.fatal-infos }}
+      analyze-command: ${{ fromJSON(needs.config.outputs.config).flutter.analyze.command }}
+      build-runner-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.build-runner.enabled }}
+      build-runner-command: ${{ fromJSON(needs.config.outputs.config).flutter.build-runner.command }}
+      l10n-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.l10n.enabled }}
+      publish-dry-run-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.publish-dry-run.enabled }}
+      test-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.test.enabled }}
+      test-command: ${{ fromJSON(needs.config.outputs.config).flutter.test.command }}
+      test-args: ${{ fromJSON(needs.config.outputs.config).flutter.test.args }}
+      test-exclude-tags: ${{ fromJSON(needs.config.outputs.config).flutter.test.exclude-tags }}
+      test-report-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.test.report }}
+      golden-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.golden.enabled }}
+      golden-os: ${{ fromJSON(needs.config.outputs.config).flutter.golden.os }}
+      golden-tags: ${{ fromJSON(needs.config.outputs.config).flutter.golden.tags }}
+      integration-test-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.integration-test.enabled }}
+      integration-test-device: ${{ fromJSON(needs.config.outputs.config).flutter.integration-test.device }}
+      coverage-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.enabled }}
+      coverage-source: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.source }}
+      coverage-min: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.min }}
+      codecov-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.codecov }}
+      inspectra-enabled: ${{ fromJSON(needs.config.outputs.run).inspectra }}
+      pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.coverage }}
+
+  inspectra:
+    name: Inspectra
+    needs: config
+    if: fromJSON(needs.config.outputs.run).inspectra
+    uses: $/.github/workflows/inspectra.yml
+    permissions:
+      contents: read
+      security-events: write
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      affected-only: ${{ fromJSON(needs.config.outputs.config).packages.affected-only }}
+      always-all-paths: ${{ toJSON(fromJSON(needs.config.outputs.config).packages.always-all-paths) }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.inspectra }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
+      install: ${{ fromJSON(needs.config.outputs.config).inspectra.install }}
+      version: ${{ fromJSON(needs.config.outputs.config).inspectra.version }}
+      config-file: ${{ fromJSON(needs.config.outputs.config).inspectra.config-file }}
+      profile: ${{ fromJSON(needs.config.outputs.config).inspectra.profile }}
+      tolerate-incomplete: ${{ fromJSON(needs.config.outputs.config).inspectra.tolerate-incomplete }}
+      check-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.check.enabled }}
+      check-root: ${{ fromJSON(needs.config.outputs.config).inspectra.check.root }}
+      scan-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.enabled }}
+      scan-recursive: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.recursive }}
+      fail-on: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.fail-on }}
+      min-severity: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.min-severity }}
+      sarif-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.sarif.enabled }}
+      sarif-category: ${{ fromJSON(needs.config.outputs.config).inspectra.sarif.category }}
+      summary-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.summary.enabled }}
+      trivy-mode: ${{ fromJSON(needs.config.outputs.config).inspectra.trivy.mode }}
+      trivy-version: ${{ fromJSON(needs.config.outputs.config).inspectra.trivy.version }}
+      trivy-cache-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.trivy.cache }}
+      offline: ${{ fromJSON(needs.config.outputs.config).inspectra.offline }}
+      config-lint-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.config-lint.enabled }}
+      config-diff-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.config-diff.enabled }}
+      report-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).inspectra.report.enabled }}
+
+  writerside:
+    name: Writerside
+    needs: config
+    if: fromJSON(needs.config.outputs.run).writerside
+    uses: $/.github/workflows/writerside.yml
+    permissions:
+      contents: read
+    secrets:
+      ALGOLIA_KEY: ${{ secrets.ALGOLIA_KEY }}
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      instances: ${{ toJSON(fromJSON(needs.config.outputs.config).writerside.instances) }}
+      builder: ${{ fromJSON(needs.config.outputs.config).writerside.builder }}
+      builder-image: ${{ fromJSON(needs.config.outputs.config).writerside.builder-image }}
+      builder-version: ${{ fromJSON(needs.config.outputs.config).writerside.builder-version }}
+      checker-enabled: ${{ fromJSON(needs.config.outputs.config).writerside.checker.enabled }}
+      pdf: ${{ fromJSON(needs.config.outputs.config).writerside.pdf }}
+      algolia-enabled: ${{ fromJSON(needs.config.outputs.config).writerside.algolia.enabled }}
+      algolia-app-name: ${{ fromJSON(needs.config.outputs.config).writerside.algolia.app-name }}
+      algolia-index: ${{ fromJSON(needs.config.outputs.config).writerside.algolia.index }}
+      pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.docs }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.docs }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      artifact-retention-days: ${{ fromJSON(needs.config.outputs.config).artifacts.retention-days }}
+
+  dartdoc:
+    name: API documentation
+    needs: config
+    if: fromJSON(needs.config.outputs.run).dartdoc
+    uses: $/.github/workflows/dartdoc.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      publishable-only: ${{ fromJSON(needs.config.outputs.config).dartdoc.publishable-only }}
+      validate-links: ${{ fromJSON(needs.config.outputs.config).dartdoc.validate-links }}
+      fail-on-warnings: ${{ fromJSON(needs.config.outputs.config).dartdoc.fail-on-warnings }}
+      dry-run-on-pr: ${{ fromJSON(needs.config.outputs.config).dartdoc.dry-run-on-pr }}
+      args: ${{ fromJSON(needs.config.outputs.config).dartdoc.args }}
+      pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.api }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.docs }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
+      artifact-retention-days: ${{ fromJSON(needs.config.outputs.config).artifacts.retention-days }}
+
+  flutter-build:
+    name: Flutter build
+    needs: config
+    if: fromJSON(needs.config.outputs.run).flutter-build
+    uses: $/.github/workflows/flutter-build.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      apps: ${{ toJSON(fromJSON(needs.config.outputs.config).build.flutter.apps) }}
+      targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.flutter.targets) }}
+      flutter-version: ${{ fromJSON(needs.config.outputs.config).flutter.versions[0] }}
+      flutter-version-file: ${{ fromJSON(needs.config.outputs.config).flutter.version-file }}
+      build-mode: ${{ fromJSON(needs.config.outputs.config).build.flutter.build-mode }}
+      flavor: ${{ fromJSON(needs.config.outputs.config).build.flutter.flavor }}
+      target-file: ${{ fromJSON(needs.config.outputs.config).build.flutter.target-file }}
+      dart-define-from-file: ${{ fromJSON(needs.config.outputs.config).build.flutter.dart-define-from-file }}
+      extra-args: ${{ fromJSON(needs.config.outputs.config).build.flutter.extra-args }}
+      build-name: ${{ fromJSON(needs.config.outputs.config).build.flutter.build-name }}
+      build-number: ${{ fromJSON(needs.config.outputs.config).build.flutter.build-number }}
+      obfuscate: ${{ fromJSON(needs.config.outputs.config).build.flutter.obfuscate }}
+      web-wasm: ${{ fromJSON(needs.config.outputs.config).build.flutter.web-wasm }}
+      macos-notarize: ${{ fromJSON(needs.config.outputs.config).build.flutter.macos-notarize }}
+      java-version: ${{ fromJSON(needs.config.outputs.config).build.flutter.java-version }}
+      environment: ${{ fromJSON(needs.config.outputs.config).build.flutter.environment }}
+      pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.web }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.build }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
+      artifact-retention-days: ${{ fromJSON(needs.config.outputs.config).artifacts.retention-days }}
+
+  dart-compile:
+    name: Dart compile
+    needs: config
+    if: fromJSON(needs.config.outputs.run).dart-compile
+    uses: $/.github/workflows/dart-compile.yml
+    permissions:
+      contents: read
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      executables: ${{ toJSON(fromJSON(needs.config.outputs.config).build.dart-compile.executables) }}
+      targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.dart-compile.targets) }}
+      archive: ${{ fromJSON(needs.config.outputs.config).build.dart-compile.archive }}
+      smoke-test-args: ${{ fromJSON(needs.config.outputs.config).build.dart-compile.smoke-test-args }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.build }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
+      artifact-retention-days: ${{ fromJSON(needs.config.outputs.config).artifacts.retention-days }}
+
+  pages:
+    name: GitHub Pages
+    needs: [config, dart, flutter, inspectra, writerside, dartdoc, flutter-build]
+    if: ${{ !cancelled() && fromJSON(needs.config.outputs.run).pages && !contains(needs.*.result, 'failure') }}
+    uses: $/.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      layout: ${{ toJSON(fromJSON(needs.config.outputs.config).pages.layout) }}
+      landing-page: ${{ fromJSON(needs.config.outputs.config).pages.landing-page }}
+      cname: ${{ fromJSON(needs.config.outputs.config).pages.cname }}
+      spa-fallback: ${{ fromJSON(needs.config.outputs.config).pages.spa-fallback }}
+      extra-path: ${{ fromJSON(needs.config.outputs.config).pages.extra-path }}
+      deploy-enabled: ${{ fromJSON(needs.config.outputs.config).pages.deploy }}
+      environment: ${{ fromJSON(needs.config.outputs.config).pages.environment }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+
+  test-report:
+    name: Test report
+    needs: [config, dart, flutter]
+    if: ${{ !cancelled() && (fromJSON(needs.config.outputs.run).dart && fromJSON(needs.config.outputs.config).dart.test.report || fromJSON(needs.config.outputs.run).flutter && fromJSON(needs.config.outputs.config).flutter.test.report) }}
+    uses: $/.github/workflows/test-report.yml
+    permissions:
+      contents: read
+      checks: write
+    with:
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+
+  release-please:
+    name: release-please
+    needs: config
+    if: fromJSON(needs.config.outputs.run).release-please
+    uses: $/.github/workflows/release-please.yml
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    secrets:
+      RELEASE_APP_ID: ${{ secrets.RELEASE_APP_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+    with:
+      config-file: ${{ fromJSON(needs.config.outputs.config).release.release-please.config-file }}
+      manifest-file: ${{ fromJSON(needs.config.outputs.config).release.release-please.manifest-file }}
+      target-branch: ${{ fromJSON(needs.config.outputs.config).project.release-branch }}
+      token-source: ${{ fromJSON(needs.config.outputs.config).release.release-please.token-source }}
+      dispatch-workflow: ${{ fromJSON(needs.config.outputs.config).release.release-please.dispatch-workflow }}
+      back-merge-enabled: ${{ fromJSON(needs.config.outputs.config).release.release-please.back-merge }}
+      back-merge-branch: ${{ fromJSON(needs.config.outputs.config).project.integration-branch }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+
+  release:
+    name: Release
+    needs: config
+    if: fromJSON(needs.config.outputs.run).release-tag
+    uses: $/.github/workflows/release-tag.yml
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    secrets:
+      PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
+      GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
+    with:
+      working-directory: ${{ needs.config.outputs.working-directory }}
+      discovery: ${{ needs.config.outputs.discovery }}
+      tag-patterns: ${{ toJSON(fromJSON(needs.config.outputs.config).release.tag-patterns) }}
+      release-branch: ${{ fromJSON(needs.config.outputs.config).release.verify.enabled && fromJSON(needs.config.outputs.config).release.verify.on-branch || '' }}
+      flutter-version: ${{ fromJSON(needs.config.outputs.config).flutter.versions[0] }}
+      inspectra-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.enabled }}
+      inspectra-install: ${{ fromJSON(needs.config.outputs.config).inspectra.install }}
+      compile-enabled: ${{ fromJSON(needs.config.outputs.config).build.dart-compile.enabled }}
+      compile-targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.dart-compile.targets) }}
+      flutter-build-enabled: ${{ fromJSON(needs.config.outputs.config).build.flutter.enabled }}
+      flutter-targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.flutter.targets) }}
+      build-environment: ${{ fromJSON(needs.config.outputs.config).build.flutter.environment }}
+      publish-enabled: ${{ fromJSON(needs.config.outputs.config).release.pub.enabled }}
+      pub-environment: ${{ fromJSON(needs.config.outputs.config).release.pub.environment }}
+      wait-for-siblings: ${{ fromJSON(needs.config.outputs.config).release.pub.wait-for-siblings }}
+      pre-publish: ${{ fromJSON(needs.config.outputs.config).hooks.pre-publish }}
+      github-release-enabled: ${{ fromJSON(needs.config.outputs.config).release.github.enabled }}
+      notes-source: ${{ fromJSON(needs.config.outputs.config).release.github.notes-source }}
+      attest: ${{ fromJSON(needs.config.outputs.config).release.github.attest }}
+      checksums: ${{ fromJSON(needs.config.outputs.config).release.github.checksums }}
+      runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
+      timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.publish }}
+      harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
+      harden-runner-egress-policy: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.egress-policy }}
+      harden-runner-allowed-endpoints: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.allowed-endpoints }}
+      pre-setup: ${{ fromJSON(needs.config.outputs.config).hooks.pre-setup }}
+      post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
+
+  gate:
+    name: Gate
+    needs: [config, pr-lint, dart, flutter, inspectra, writerside, dartdoc, flutter-build, dart-compile, pages, test-report, release-please, release]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions: {}
+
+    steps:
+      - name: Check the results
+        shell: bash
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo "### Pipeline"
+            echo
+            echo "| Job | Result |"
+            echo "|---|---|"
+            jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<<"$RESULTS"
+          } >>"$GITHUB_STEP_SUMMARY"
+          failed="$(jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")' <<<"$RESULTS")"
+          if [[ -n "$failed" ]]; then
+            echo "::error::Failed: $failed."
+            exit 1
+          fi

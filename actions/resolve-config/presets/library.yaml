@@ -1,0 +1,10 @@
+# A single package published to pub.dev: API docs on Pages, a dry run on every change.
+dart:
+  publish-dry-run:
+    enabled: true
+dartdoc:
+  enabled: true
+release:
+  mode: tag
+  pub:
+    enabled: true

@@ -1,0 +1,282 @@
+name: Publish to pub.dev
+
+# Publishes the package a release tag names to pub.dev with automated publishing: pub.dev accepts
+# the OpenID Connect token of the publish job, so no credential is stored anywhere.
+#
+# On pub.dev, every package names the repository, the tag pattern (v{{version}}, or
+# <package>-v{{version}} in a workspace) and, recommended, the environment of this workflow. pub.dev
+# only accepts runs started by the push of such a tag; the token carries the caller's repository,
+# event and ref, so calling this workflow from another repository works.
+#
+# The caller grants id-token: write.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before; empty discovers them here.
+        type: string
+        default: ''
+      include:
+        description: Globs of package directories outside the workspace.
+        type: string
+        default: ''
+      exclude:
+        description: Globs of package directories to leave out.
+        type: string
+        default: ''
+      tag:
+        description: The release tag; empty takes github.ref_name.
+        type: string
+        default: ''
+      tag-patterns:
+        description: JSON object of tag patterns with {package} and {version}.
+        type: string
+        default: '{"single":"v{version}","package":"{package}-v{version}"}'
+      release-branch:
+        description: Branch the tagged commit has to be on; empty skips the check.
+        type: string
+        default: main
+      environment:
+        description: GitHub environment of the publish job; the same name as in the pub.dev settings. Empty publishes without one.
+        type: string
+        default: pub.dev
+      dry-run:
+        description: Only run pub publish --dry-run.
+        type: boolean
+        default: false
+      skip-existing:
+        description: Succeed without publishing when the version is already on pub.dev, for reruns.
+        type: boolean
+        default: true
+      wait-for-siblings:
+        description: Wait until the sibling packages this one depends on are on pub.dev.
+        type: boolean
+        default: true
+      wait-attempts:
+        description: How often to ask pub.dev for a sibling.
+        type: number
+        default: 60
+      wait-interval:
+        description: Seconds between two attempts.
+        type: number
+        default: 30
+      sdk:
+        description: Dart SDK (stable, beta or a version).
+        type: string
+        default: stable
+      flutter-version:
+        description: Flutter version for Flutter packages.
+        type: string
+        default: stable
+      pre-publish:
+        description: Shell commands run in the package directory right before the publication.
+        type: string
+        default: ''
+      runners:
+        description: JSON object of runner labels.
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of the publish job, including the wait for siblings.
+        type: number
+        default: 45
+      harden-runner:
+        description: Run step-security/harden-runner first.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+
+    outputs:
+      package:
+        description: The published package.
+        value: ${{ jobs.verify.outputs.package }}
+      version:
+        description: The published version.
+        value: ${{ jobs.verify.outputs.version }}
+      published:
+        description: true when this run published the version.
+        value: ${{ jobs.publish.outputs.published }}
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+
+    outputs:
+      package: ${{ steps.tag.outputs.package }}
+      version: ${{ steps.tag.outputs.version }}
+      path: ${{ steps.tag.outputs.path }}
+      release: ${{ steps.tag.outputs.release }}
+      siblings: ${{ steps.siblings.outputs.names }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Discover the packages
+        id: discover
+        uses: $/actions/discover-packages
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          include: ${{ inputs.include }}
+          exclude: ${{ inputs.exclude }}
+          affected-only: 'false'
+
+      - name: Verify the tag
+        id: tag
+        uses: $/actions/version-verify
+        with:
+          tag: ${{ inputs.tag }}
+          tag-patterns: ${{ inputs.tag-patterns }}
+          discovery: ${{ steps.discover.outputs.discovery }}
+          release-branch: ${{ inputs.release-branch }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Name the siblings
+        id: siblings
+        shell: bash
+        env:
+          DISCOVERY: ${{ steps.discover.outputs.discovery }}
+          RELEASE: ${{ steps.tag.outputs.release }}
+        run: |
+          jq -e '.publishable' <<<"$RELEASE" >/dev/null || {
+            echo "::error::$(jq -r '.package' <<<"$RELEASE") has publish_to: none and cannot be published."
+            exit 1
+          }
+          echo "names=$(jq -c '[.packages[].name]' <<<"$DISCOVERY")" >>"$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ needs.verify.outputs.package }} ${{ needs.verify.outputs.version }}
+    needs: verify
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    environment:
+      name: ${{ inputs.environment }}
+      url: https://pub.dev/packages/${{ needs.verify.outputs.package }}/versions/${{ needs.verify.outputs.version }}
+
+    # Two runs of the same release never publish at once.
+    concurrency:
+      group: davils-pub-${{ github.repository }}-${{ needs.verify.outputs.package }}-${{ needs.verify.outputs.version }}
+      cancel-in-progress: false
+
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+
+    env:
+      PACKAGE: ${{ needs.verify.outputs.package }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      PACKAGE_DIR: ${{ inputs.working-directory }}/${{ needs.verify.outputs.path }}
+      TOOLCHAIN: ${{ fromJSON(needs.verify.outputs.release).toolchain }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check whether the version is published
+        id: existing
+        shell: bash
+        env:
+          SKIP_EXISTING: ${{ inputs.skip-existing }}
+        run: |
+          if [[ "$SKIP_EXISTING" == true ]] && curl -fsS -o /dev/null "https://pub.dev/api/packages/$PACKAGE/versions/$VERSION"; then
+            echo "::notice::$PACKAGE $VERSION is already on pub.dev; nothing to publish."
+            echo "exists=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      # With the id-token permission, setup-dart registers the OpenID Connect token of this job
+      # for pub.dev. It has to run in this job; Flutter's pub reads the same token.
+      - name: Set up Dart
+        if: steps.existing.outputs.exists != 'true'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          resolve: ${{ env.TOOLCHAIN == 'dart' }}
+          packages: '[${{ toJSON(fromJSON(needs.verify.outputs.release)) }}]'
+
+      - name: Set up Flutter
+        if: steps.existing.outputs.exists != 'true' && env.TOOLCHAIN == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ inputs.flutter-version }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: '[${{ toJSON(fromJSON(needs.verify.outputs.release)) }}]'
+
+      - name: Wait for the siblings on pub.dev
+        if: steps.existing.outputs.exists != 'true' && inputs.wait-for-siblings && !inputs.dry-run
+        uses: $/actions/wait-for-pub-dev
+        with:
+          package-path: ${{ env.PACKAGE_DIR }}
+          siblings: ${{ needs.verify.outputs.siblings }}
+          attempts: ${{ inputs.wait-attempts }}
+          interval: ${{ inputs.wait-interval }}
+
+      - name: Run the pre-publish hook
+        if: steps.existing.outputs.exists != 'true'
+        uses: $/actions/run-hook
+        with:
+          name: pre-publish
+          run: ${{ inputs.pre-publish }}
+          working-directory: ${{ env.PACKAGE_DIR }}
+
+      - name: Publish
+        id: publish
+        if: steps.existing.outputs.exists != 'true'
+        working-directory: ${{ env.PACKAGE_DIR }}
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          if [[ "$DRY_RUN" == true ]]; then
+            "$TOOLCHAIN" pub publish --dry-run
+            echo "published=false" >>"$GITHUB_OUTPUT"
+          else
+            "$TOOLCHAIN" pub publish --force
+            echo "published=true" >>"$GITHUB_OUTPUT"
+            echo "### Published [$PACKAGE $VERSION](https://pub.dev/packages/$PACKAGE/versions/$VERSION)" >>"$GITHUB_STEP_SUMMARY"
+          fi

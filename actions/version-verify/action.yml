@@ -1,0 +1,66 @@
+name: Verify a release tag
+description: >-
+  Checks that a release tag matches a tag pattern, names a package of the repository, carries the
+  version of its pubspec.yaml and points to a commit of the release branch. Needs a checkout with
+  the history (fetch-depth 0) for the branch check.
+author: davils-com
+
+inputs:
+  tag:
+    description: The tag; empty takes github.ref_name.
+    required: false
+    default: ''
+  tag-patterns:
+    description: JSON object of tag patterns with {package} and {version}.
+    required: false
+    default: '{"single":"v{version}","package":"{package}-v{version}"}'
+  discovery:
+    description: Output of discover-packages.
+    required: true
+  release-branch:
+    description: Branch the tagged commit has to be on; empty skips the check.
+    required: false
+    default: main
+  working-directory:
+    description: Directory of the root pubspec.yaml, relative to the repository root.
+    required: false
+    default: .
+
+outputs:
+  package:
+    description: Name of the released package.
+    value: ${{ steps.verify.outputs.package }}
+  path:
+    description: Path of the package, relative to the working directory.
+    value: ${{ steps.verify.outputs.path }}
+  version:
+    description: The released version.
+    value: ${{ steps.verify.outputs.version }}
+  prerelease:
+    description: true for a version with a pre-release part, such as 1.0.0-beta.1.
+    value: ${{ steps.verify.outputs.prerelease }}
+  release:
+    description: Everything about the release as JSON.
+    value: ${{ steps.verify.outputs.release }}
+
+runs:
+  using: composite
+  steps:
+    - name: Verify the tag
+      id: verify
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        TAG: ${{ inputs.tag || github.ref_name }}
+        TAG_PATTERNS: ${{ inputs.tag-patterns }}
+        DISCOVERY: ${{ inputs.discovery }}
+        RELEASE_BRANCH: ${{ inputs.release-branch }}
+      run: |
+        source "$ACTION_PATH/../_lib/common.sh"
+        release="$(bash "$ACTION_PATH/scripts/verify.sh")"
+        set_output release "$release"
+        for key in package path version prerelease; do
+          set_output "$key" "$(jq -r --arg k "$key" '.[$k]' <<<"$release")"
+        done
+        echo "Release: $(jq -r '"\(.package) \(.version) from \(.path)"' <<<"$release")"

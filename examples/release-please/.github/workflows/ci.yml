@@ -1,0 +1,39 @@
+name: CI
+
+# release-please keeps a release pull request open on main. Merging it creates the tags with the
+# token of a GitHub App (secrets RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY), and those tags start
+# this workflow again: the tag-driven release publishes to pub.dev and completes the GitHub
+# release that release-please created.
+
+on:
+  push:
+    branches: ['**']
+    tags: ['*-v*']
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions: {}
+
+jobs:
+  pipeline:
+    name: Pipeline
+    uses: davils-com/workflows/.github/workflows/pipeline.yml@v1
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+      checks: write
+      security-events: write
+      pages: write
+      id-token: write
+      attestations: write
+    secrets: inherit
+    with:
+      release: release-please

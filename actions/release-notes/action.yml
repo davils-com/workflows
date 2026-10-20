@@ -1,0 +1,67 @@
+name: Release notes
+description: >-
+  Writes the release notes of a version: from inspectra changelog notes, from the version's
+  section of CHANGELOG.md, from a file, or leaves them to GitHub's generated notes.
+author: davils-com
+
+inputs:
+  source:
+    description: auto, inspectra, changelog, file, generate or keep.
+    required: false
+    default: auto
+  package-path:
+    description: Directory of the package, relative to the working directory.
+    required: false
+    default: .
+  version:
+    description: The released version.
+    required: true
+  file:
+    description: For source file, the path relative to the working directory.
+    required: false
+    default: ''
+  inspectra-command:
+    description: The command that runs Inspectra, for source inspectra and auto.
+    required: false
+    default: ''
+  has-inspectra:
+    description: true when the package has an Inspectra configuration.
+    required: false
+    default: 'false'
+  working-directory:
+    description: Directory of the root pubspec.yaml, relative to the repository root.
+    required: false
+    default: .
+
+outputs:
+  file:
+    description: Path of the notes file.
+    value: ${{ steps.notes.outputs.file }}
+  source:
+    description: The source that was used.
+    value: ${{ steps.notes.outputs.source }}
+
+runs:
+  using: composite
+  steps:
+    - name: Write the release notes
+      id: notes
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SOURCE: ${{ inputs.source }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        VERSION: ${{ inputs.version }}
+        NOTES_FILE: ${{ inputs.file }}
+        INSPECTRA: ${{ inputs.inspectra-command }}
+        HAS_INSPECTRA: ${{ inputs.has-inspectra }}
+      run: |
+        export OUTPUT="$RUNNER_TEMP/RELEASE_NOTES.md"
+        used="$(bash "$ACTION_PATH/scripts/notes.sh")"
+        {
+          echo "file=$OUTPUT"
+          echo "source=$used"
+        } >>"$GITHUB_OUTPUT"
+        echo "Release notes from $used:"
+        cat "$OUTPUT"

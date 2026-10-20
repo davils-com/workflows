@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*', '*-v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release
+    uses: davils-com/workflows/.github/workflows/release-tag.yml@v1
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      release-branch: main
+      pub-environment: pub.dev
+      compile-targets: '["linux-x64","macos-arm64","windows-x64"]'

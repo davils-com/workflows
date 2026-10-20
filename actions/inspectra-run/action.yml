@@ -1,0 +1,53 @@
+name: Run Inspectra
+description: >-
+  Runs an Inspectra command and turns its exit code into a clear annotation: findings, usage
+  error, invalid configuration, incomplete run (optionally only a warning) or internal error.
+author: davils-com
+
+inputs:
+  command:
+    description: The command that runs Inspectra (the command output of inspectra-setup).
+    required: true
+  args:
+    description: The arguments, such as -C packages/core check. Split on whitespace.
+    required: true
+  label:
+    description: Name of the run in annotations.
+    required: false
+    default: check
+  working-directory:
+    description: Directory to run in, relative to the repository root.
+    required: false
+    default: .
+  tolerate-incomplete:
+    description: Turn exit code 69 (a service or tool was unavailable) into a warning.
+    required: false
+    default: 'false'
+  config-file:
+    description: Sets INSPECTRA_CONFIG.
+    required: false
+    default: ''
+  profile:
+    description: Sets INSPECTRA_PROFILE.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Inspectra ${{ inputs.label }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INSPECTRA: ${{ inputs.command }}
+        ARGS: ${{ inputs.args }}
+        LABEL: ${{ inputs.label }}
+        TOLERATE_INCOMPLETE: ${{ inputs.tolerate-incomplete }}
+        CONFIG_FILE: ${{ inputs.config-file }}
+        PROFILE: ${{ inputs.profile }}
+      run: |
+        [[ -n "$CONFIG_FILE" ]] && export INSPECTRA_CONFIG="$CONFIG_FILE"
+        [[ -n "$PROFILE" ]] && export INSPECTRA_PROFILE="$PROFILE"
+        read -r -a args <<<"$ARGS"
+        bash "$ACTION_PATH/scripts/run.sh" "$LABEL" "${args[@]}"

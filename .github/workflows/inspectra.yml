@@ -1,0 +1,651 @@
+name: Inspectra
+
+# Supply-chain security and quality gates with Inspectra (https://github.com/davils-com/Inspectra).
+#
+#   check   inspectra check per package and at the workspace root: format, lint, style, API, API
+#           semver, changelog, the Trivy scans, dependency and workspace policy, coverage; whatever
+#           the Inspectra configuration of the package enables
+#   scan    inspectra scan -r: OSV audit, pubspec rules, typosquatting, Trivy filesystem scan;
+#           SARIF to GitHub code scanning, the Markdown report to the job summary, then the gate
+#   config  config lint as SARIF, and on pull requests config diff --fail-on-weaker
+#   report  the HTML dashboard of every package as a part of the GitHub Pages site
+#
+# The scan job uploads SARIF, so the caller grants security-events: write.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory of the root pubspec.yaml, relative to the repository root.
+        type: string
+        default: .
+      discovery:
+        description: Packages discovered before (pipeline.yml passes its own); empty discovers them here.
+        type: string
+        default: ''
+      include:
+        description: Globs of package directories outside the workspace.
+        type: string
+        default: ''
+      exclude:
+        description: Globs of package directories to leave out.
+        type: string
+        default: ''
+      affected-only:
+        description: true, false or auto (auto checks only the packages a pull request or merge group affects).
+        type: string
+        default: auto
+      base-sha:
+        description: The commit to compare with; empty takes it from the event.
+        type: string
+        default: ''
+      always-all-paths:
+        description: Globs relative to the working directory whose change affects every package.
+        type: string
+        default: '["pubspec.yaml","pubspec.lock","analysis_options.yaml","dart_test.yaml","inspectra.yaml","inspectra.base.yaml","trivy*.yaml","tool/**",".github/**"]'
+      runners:
+        description: JSON object of runner labels (linux, macos, windows, ...).
+        type: string
+        default: '{}'
+      timeout-minutes:
+        description: Timeout of every job.
+        type: number
+        default: 30
+      harden-runner:
+        description: Run step-security/harden-runner first on Linux runners.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+      pre-setup:
+        description: Shell commands run in every job before any tool is set up.
+        type: string
+        default: ''
+      post-setup:
+        description: Shell commands run in every job after the dependencies are resolved.
+        type: string
+        default: ''
+      artifact-retention-days:
+        description: Days to keep the reports.
+        type: number
+        default: 30
+      fail-fast:
+        description: Cancel the other check jobs when one fails.
+        type: boolean
+        default: false
+      sdk:
+        description: Dart SDK of the jobs (stable, beta or a version).
+        type: string
+        default: stable
+      flutter-version:
+        description: Flutter version for Flutter packages (stable, beta or a version).
+        type: string
+        default: stable
+      pub-hosted-url:
+        description: URL of a private package host; its token is the secret PUB_HOSTED_TOKEN.
+        type: string
+        default: ''
+      pub-get-args:
+        description: Extra arguments for pub get.
+        type: string
+        default: ''
+      git-host:
+        description: Host of private git dependencies; its token is the secret GIT_DEPS_TOKEN.
+        type: string
+        default: github.com
+
+      install:
+        description: auto (the dev dependency when the root pubspec.yaml has one, a global activation otherwise), dev-dependency, global or binary.
+        type: string
+        default: auto
+      version:
+        description: Inspectra version for global and binary installs; latest or a version.
+        type: string
+        default: latest
+      config-file:
+        description: Sets INSPECTRA_CONFIG for every command.
+        type: string
+        default: ''
+      profile:
+        description: Sets INSPECTRA_PROFILE for every command, such as ci.
+        type: string
+        default: ''
+      tolerate-incomplete:
+        description: Turn exit code 69 (OSV, pub.dev, Trivy or git unavailable) into a warning.
+        type: boolean
+        default: false
+
+      check-enabled:
+        description: Run inspectra check for every package with an Inspectra configuration.
+        type: boolean
+        default: true
+      check-root:
+        description: true, false or auto (at the root of a workspace); also checks the workspace root, where the workspace policy lives.
+        type: string
+        default: auto
+      build-runner-check:
+        description: true, false or auto (packages with build_runner); runs build_runner build --only-check before inspectra check, for a current API dump and generated files.
+        type: string
+        default: auto
+      coverage-artifacts:
+        description: Upload the coverage of the coverage gates as davils-coverage-inspectra-* artifacts.
+        type: boolean
+        default: true
+
+      scan-enabled:
+        description: Run inspectra scan.
+        type: boolean
+        default: true
+      scan-recursive:
+        description: Scan every package below the working directory.
+        type: boolean
+        default: true
+      fail-on:
+        description: critical, high, medium, low, unknown, or none to never fail the scan.
+        type: string
+        default: high
+      min-severity:
+        description: Hide findings below this severity.
+        type: string
+        default: ''
+      sarif-enabled:
+        description: true, false or auto (not for pull requests from forks); uploads the findings to GitHub code scanning.
+        type: string
+        default: auto
+      sarif-category:
+        description: Category of the SARIF uploads.
+        type: string
+        default: inspectra
+      summary-enabled:
+        description: Write the scan report to the job summary.
+        type: boolean
+        default: true
+      trivy-mode:
+        description: auto, required or disabled; empty keeps the configuration.
+        type: string
+        default: ''
+      trivy-version:
+        description: Trivy version; empty keeps the configuration.
+        type: string
+        default: ''
+      trivy-cache-enabled:
+        description: Cache the Trivy vulnerability database.
+        type: boolean
+        default: true
+      offline:
+        description: Never open a network connection.
+        type: boolean
+        default: false
+
+      config-lint-enabled:
+        description: Report risky Inspectra settings (config lint) to code scanning.
+        type: boolean
+        default: true
+      config-diff-enabled:
+        description: true, false or auto (pull requests); fails when a pull request weakens the Inspectra configuration.
+        type: string
+        default: auto
+      report-enabled:
+        description: Render the HTML dashboard of every package as a part of the GitHub Pages site (pages.yml).
+        type: boolean
+        default: false
+
+    secrets:
+      PUB_HOSTED_TOKEN:
+        required: false
+      GIT_DEPS_TOKEN:
+        required: false
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    outputs:
+      discovery: ${{ steps.discover.outputs.discovery }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      count: ${{ steps.matrix.outputs.count }}
+      toolchain: ${{ steps.matrix.outputs.toolchain }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Discover the packages
+        id: discover
+        uses: $/actions/discover-packages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          discovery: ${{ inputs.discovery }}
+          include: ${{ inputs.include }}
+          exclude: ${{ inputs.exclude }}
+          affected-only: ${{ inputs.affected-only }}
+          base-sha: ${{ inputs.base-sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          always-all-paths: ${{ inputs.always-all-paths }}
+
+      - name: Select the packages
+        id: packages
+        uses: $/actions/build-matrix
+        with:
+          discovery: ${{ steps.discover.outputs.discovery }}
+          affected: ${{ steps.discover.outputs.affected }}
+          select: inspectra
+          granularity: package
+          runners: ${{ inputs.runners }}
+
+      # One job per package with an Inspectra configuration, plus the workspace root.
+      - name: Build the matrix
+        id: matrix
+        shell: bash
+        env:
+          DISCOVERY: ${{ steps.discover.outputs.discovery }}
+          MATRIX: ${{ steps.packages.outputs.matrix }}
+          CHECK_ROOT: ${{ inputs.check-root }}
+          LINUX: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+        run: |
+          case "$(tr '[:upper:]' '[:lower:]' <<<"$CHECK_ROOT")" in
+            true | on | yes) CHECK_ROOT=true ;;
+            false | off | no) CHECK_ROOT=false ;;
+            *) CHECK_ROOT=auto ;;
+          esac
+          matrix="$(jq -c --argjson d "$DISCOVERY" --arg root "$CHECK_ROOT" --arg linux "$LINUX" '
+            ($d.workspace.enabled and $d.workspace.inspectra) as $auto
+            | (if $root == "true" or ($root == "auto" and $auto) then
+                 [{id: "workspace", label: "workspace root", packages: [{name: ($d.workspace.name), path: ".", workspace: true, toolchain: $d.workspace.toolchain, has_build_runner: false}], runner: $linux}]
+               else [] end) as $extra
+            | {include: ([.include[] | {id, label, packages, runner}] + $extra)}
+          ' <<<"$MATRIX")"
+          {
+            echo "matrix=$matrix"
+            echo "count=$(jq '.include | length' <<<"$matrix")"
+            echo "toolchain=$(jq -r '.workspace.toolchain' <<<"$DISCOVERY")"
+          } >>"$GITHUB_OUTPUT"
+
+  check:
+    name: Check ${{ matrix.label }}
+    needs: plan
+    if: inputs.check-enabled && needs.plan.outputs.count != '0'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+
+    env:
+      PACKAGE_PATH: ${{ matrix.packages[0].path }}
+      PACKAGE_NAME: ${{ matrix.packages[0].name }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner && runner.os == 'Linux'
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      # The API semver check compares with the last release tag, so the history comes along.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Dart
+        if: matrix.packages[0].toolchain != 'flutter'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(matrix.packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Flutter
+        if: matrix.packages[0].toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ inputs.flutter-version }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(matrix.packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Inspectra
+        id: inspectra
+        uses: $/actions/inspectra-setup
+        with:
+          install: ${{ inputs.install }}
+          version: ${{ inputs.version }}
+          working-directory: ${{ inputs.working-directory }}
+          trivy-cache: ${{ inputs.trivy-cache-enabled }}
+          # build_runner builders with run_on_build find Trivy on the PATH.
+          trivy-on-path: ${{ !contains(fromJSON('["false","off","no"]'), inputs.build-runner-check) && matrix.packages[0].has_build_runner }}
+
+      - name: Check the generated files
+        if: ${{ contains(fromJSON('["true","on","yes"]'), inputs.build-runner-check) || (!contains(fromJSON('["false","off","no"]'), inputs.build-runner-check) && matrix.packages[0].has_build_runner) }}
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          TOOLCHAIN: ${{ matrix.packages[0].toolchain }}
+        run: |
+          cd "$PACKAGE_PATH"
+          if [[ "$TOOLCHAIN" == flutter ]]; then
+            flutter pub run build_runner build --only-check
+          else
+            dart run build_runner build --only-check
+          fi
+
+      - name: Inspectra check
+        uses: $/actions/inspectra-run
+        with:
+          command: ${{ steps.inspectra.outputs.command }}
+          args: -C ${{ matrix.packages[0].path }} check
+          label: check (${{ matrix.label }})
+          working-directory: ${{ inputs.working-directory }}
+          tolerate-incomplete: ${{ inputs.tolerate-incomplete }}
+          config-file: ${{ inputs.config-file }}
+          profile: ${{ inputs.profile }}
+
+      - name: Collect the coverage
+        if: always() && inputs.coverage-artifacts
+        id: coverage
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          REPO_PREFIX: ${{ inputs.working-directory }}
+        run: |
+          file="$PACKAGE_PATH/coverage/lcov.info"
+          out="$RUNNER_TEMP/davils-inspectra-coverage"
+          mkdir -p "$out"
+          if [[ -f "$file" ]]; then
+            prefix="${REPO_PREFIX#./}"
+            prefix="${prefix%/}"
+            [[ "$prefix" == . ]] && prefix=''
+            pkg="$PACKAGE_PATH"
+            [[ "$pkg" == . ]] && pkg='' || pkg="$pkg/"
+            sed -E -e "s#^SF:$(pwd -P)/#SF:${prefix:+$prefix/}#" -e "s#^SF:(lib|bin|test)/#SF:${prefix:+$prefix/}${pkg}\\1/#" "$file" >"$out/$PACKAGE_NAME.lcov"
+          fi
+          echo "directory=$out" >>"$GITHUB_OUTPUT"
+
+      - name: Upload the coverage
+        if: always() && inputs.coverage-artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-coverage-inspectra-${{ matrix.id }}
+          path: ${{ steps.coverage.outputs.directory }}/
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: inspectra-reports-${{ matrix.id }}
+          path: |
+            ${{ inputs.working-directory }}/${{ matrix.packages[0].path }}/.dart_tool/inspectra/
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+  scan:
+    name: Scan
+    needs: plan
+    if: ${{ inputs.scan-enabled || inputs.config-lint-enabled || !contains(fromJSON('["false","off","no"]'), inputs.config-diff-enabled) }}
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+      security-events: write
+
+    env:
+      SARIF: ${{ contains(fromJSON('["true","on","yes"]'), inputs.sarif-enabled) || (!contains(fromJSON('["false","off","no"]'), inputs.sarif-enabled) && !github.event.pull_request.head.repo.fork) }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the pre-setup hook
+        uses: $/actions/run-hook
+        with:
+          name: pre-setup
+          run: ${{ inputs.pre-setup }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Set up Dart
+        if: needs.plan.outputs.toolchain != 'flutter'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(fromJSON(needs.plan.outputs.discovery).packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Flutter
+        if: needs.plan.outputs.toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ inputs.flutter-version }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(fromJSON(needs.plan.outputs.discovery).packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+          post-setup: ${{ inputs.post-setup }}
+
+      - name: Set up Inspectra
+        id: inspectra
+        uses: $/actions/inspectra-setup
+        with:
+          install: ${{ inputs.install }}
+          version: ${{ inputs.version }}
+          working-directory: ${{ inputs.working-directory }}
+          trivy-cache: ${{ inputs.trivy-cache-enabled }}
+
+      - name: Scan
+        if: inputs.scan-enabled
+        uses: $/actions/inspectra-scan
+        with:
+          command: ${{ steps.inspectra.outputs.command }}
+          working-directory: ${{ inputs.working-directory }}
+          recursive: ${{ inputs.scan-recursive }}
+          fail-on: ${{ inputs.fail-on }}
+          min-severity: ${{ inputs.min-severity }}
+          trivy-mode: ${{ inputs.trivy-mode }}
+          trivy-version: ${{ inputs.trivy-version }}
+          offline: ${{ inputs.offline }}
+          sarif: ${{ env.SARIF }}
+          sarif-category: ${{ inputs.sarif-category }}
+          summary: ${{ inputs.summary-enabled }}
+          tolerate-incomplete: ${{ inputs.tolerate-incomplete }}
+          config-file: ${{ inputs.config-file }}
+          profile: ${{ inputs.profile }}
+
+      - name: Lint the Inspectra configuration
+        if: ${{ !cancelled() && inputs.config-lint-enabled && env.SARIF == 'true' }}
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          INSPECTRA: ${{ steps.inspectra.outputs.command }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          [[ -n "$CONFIG_FILE" ]] && export INSPECTRA_CONFIG="$CONFIG_FILE"
+          [[ -n "$PROFILE" ]] && export INSPECTRA_PROFILE="$PROFILE"
+          read -r -a command <<<"$INSPECTRA"
+          "${command[@]}" config lint --format sarif --output "$RUNNER_TEMP/inspectra-config.sarif" --exit-zero ||
+            echo "::warning::inspectra config lint could not run."
+
+      - name: Upload the configuration findings
+        if: ${{ !cancelled() && inputs.config-lint-enabled && env.SARIF == 'true' && hashFiles(format('{0}/inspectra-config.sarif', runner.temp)) != '' }}
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: ${{ runner.temp }}/inspectra-config.sarif
+          category: ${{ inputs.sarif-category }}-config
+
+      # A pull request that lowers a threshold or turns a gate off fails here; the change then
+      # needs a deliberate second look.
+      - name: Compare the configuration with the base
+        if: ${{ !cancelled() && (contains(fromJSON('["true","on","yes"]'), inputs.config-diff-enabled) || (!contains(fromJSON('["false","off","no"]'), inputs.config-diff-enabled) && github.event_name == 'pull_request')) }}
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          BASE: ${{ inputs.base-sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          GITHUB_TOKEN: ${{ github.token }}
+          INSPECTRA: ${{ steps.inspectra.outputs.command }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          if [[ -z "$BASE" || "$BASE" =~ ^0+$ ]]; then
+            echo "No base commit to compare with."
+            exit 0
+          fi
+          header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          git -c "http.extraheader=$header" fetch --no-tags --quiet --depth=1 origin "$BASE"
+          [[ -n "$CONFIG_FILE" ]] && export INSPECTRA_CONFIG="$CONFIG_FILE"
+          [[ -n "$PROFILE" ]] && export INSPECTRA_PROFILE="$PROFILE"
+          read -r -a command <<<"$INSPECTRA"
+          "${command[@]}" config diff "git:$BASE" --fail-on-weaker
+
+  report:
+    name: Dashboard
+    needs: plan
+    if: inputs.report-enabled
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Dart
+        if: needs.plan.outputs.toolchain != 'flutter'
+        uses: $/actions/setup-dart-env
+        with:
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(fromJSON(needs.plan.outputs.discovery).packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+
+      - name: Set up Flutter
+        if: needs.plan.outputs.toolchain == 'flutter'
+        uses: $/actions/setup-flutter-env
+        with:
+          version: ${{ inputs.flutter-version }}
+          working-directory: ${{ inputs.working-directory }}
+          packages: ${{ toJSON(fromJSON(needs.plan.outputs.discovery).packages) }}
+          pub-get-args: ${{ inputs.pub-get-args }}
+          pub-hosted-url: ${{ inputs.pub-hosted-url }}
+          pub-hosted-token: ${{ secrets.PUB_HOSTED_TOKEN }}
+          git-token: ${{ secrets.GIT_DEPS_TOKEN }}
+          git-host: ${{ inputs.git-host }}
+
+      - name: Set up Inspectra
+        id: inspectra
+        uses: $/actions/inspectra-setup
+        with:
+          install: ${{ inputs.install }}
+          version: ${{ inputs.version }}
+          working-directory: ${{ inputs.working-directory }}
+          trivy-cache: ${{ inputs.trivy-cache-enabled }}
+
+      # The dashboard shows failed sections; it is a report, never a gate.
+      - name: Render the dashboard
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          INSPECTRA: ${{ steps.inspectra.outputs.command }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          [[ -n "$CONFIG_FILE" ]] && export INSPECTRA_CONFIG="$CONFIG_FILE"
+          [[ -n "$PROFILE" ]] && export INSPECTRA_PROFILE="$PROFILE"
+          out="$RUNNER_TEMP/davils-inspectra-report"
+          mkdir -p "$out"
+          read -r -a command <<<"$INSPECTRA"
+          "${command[@]}" report --recursive --format html --output "$out/index.html" --also "json=$out/report.json" --exit-zero ||
+            echo "::warning::The Inspectra dashboard is incomplete."
+          jq -cn '{part: "inspectra", id: "report"}' >"$out/.davils-part.json"
+
+      - name: Upload the Pages part
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-pages-inspectra
+          path: ${{ runner.temp }}/davils-inspectra-report/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}

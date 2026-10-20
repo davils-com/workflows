@@ -1,0 +1,12 @@
+name: davils_ci_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+
+workspace:
+  - packages/alpha
+  - packages/nested/beta
+
+dev_dependencies:
+  test: ^1.26.0

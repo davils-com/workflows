@@ -1,0 +1,193 @@
+name: release-please
+
+# Keeps release pull requests open with the next versions and changelogs from Conventional
+# Commits; merging one makes release-please tag the release. The tag then has to start the
+# tag-driven release (release-tag.yml), because pub.dev only accepts publications from runs that
+# a tag push started. Tags created with the workflow's GITHUB_TOKEN start no workflow, so:
+#
+#   token-source app           (recommended) a GitHub App token; its tags start the release workflow
+#   token-source pat           a personal access token in the secret RELEASE_PLEASE_TOKEN; the same
+#   token-source github-token  the GITHUB_TOKEN; dispatch-workflow then starts the release workflow
+#                              with workflow_dispatch on each new tag (pub.dev has to allow
+#                              publishing from workflow_dispatch events)
+#
+# Configure it with release-please-config.json and .release-please-manifest.json (manifest mode;
+# see examples/release-please). For a workspace: release-type dart per package,
+# include-component-in-tag true, tag-separator "-", so the tags are <package>-v<version>.
+#
+# The caller grants contents: write, pull-requests: write, issues: write and actions: write.
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: release-please configuration.
+        type: string
+        default: release-please-config.json
+      manifest-file:
+        description: release-please manifest with the current versions.
+        type: string
+        default: .release-please-manifest.json
+      target-branch:
+        description: Branch the release pull requests target; empty uses the default branch.
+        type: string
+        default: main
+      token-source:
+        description: app (secrets RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY), pat (secret RELEASE_PLEASE_TOKEN) or github-token.
+        type: string
+        default: app
+      dispatch-workflow:
+        description: For token-source github-token, the file name of the release workflow to dispatch on each new tag, such as release.yml.
+        type: string
+        default: ''
+      back-merge-enabled:
+        description: After a release, open a pull request from the target branch into back-merge-branch.
+        type: boolean
+        default: false
+      back-merge-branch:
+        description: Branch of the back merge.
+        type: string
+        default: develop
+      runners:
+        description: JSON object of runner labels.
+        type: string
+        default: '{}'
+      harden-runner:
+        description: Run step-security/harden-runner first.
+        type: boolean
+        default: true
+      harden-runner-egress-policy:
+        description: audit or block.
+        type: string
+        default: audit
+      harden-runner-allowed-endpoints:
+        description: Endpoints allowed with the block policy, space separated.
+        type: string
+        default: ''
+
+    secrets:
+      RELEASE_APP_ID:
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        required: false
+      RELEASE_PLEASE_TOKEN:
+        required: false
+
+    outputs:
+      releases-created:
+        description: true when release-please created at least one release.
+        value: ${{ jobs.release-please.outputs.releases-created }}
+      tags:
+        description: The created tags as a JSON array.
+        value: ${{ jobs.release-please.outputs.tags }}
+      paths-released:
+        description: The released package paths as a JSON array.
+        value: ${{ jobs.release-please.outputs.paths-released }}
+
+permissions: {}
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
+    timeout-minutes: 15
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+
+    outputs:
+      releases-created: ${{ steps.release.outputs.releases_created }}
+      tags: ${{ steps.tags.outputs.tags }}
+      paths-released: ${{ steps.release.outputs.paths_released }}
+
+    steps:
+      - name: Harden the runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: ${{ inputs.harden-runner-egress-policy }}
+          allowed-endpoints: ${{ inputs.harden-runner-allowed-endpoints }}
+
+      - name: Create the app token
+        id: app
+        if: inputs.token-source == 'app'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Only what release-please needs: tags and releases, its pull requests and their labels.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Pick the token
+        id: token
+        shell: bash
+        env:
+          SOURCE: ${{ inputs.token-source }}
+          HAS_PAT: ${{ secrets.RELEASE_PLEASE_TOKEN != '' }}
+        run: |
+          case "$SOURCE" in
+            app | github-token) ;;
+            pat)
+              [[ "$HAS_PAT" == true ]] || { echo "::error::token-source pat needs the secret RELEASE_PLEASE_TOKEN."; exit 1; }
+              ;;
+            *) echo "::error::token-source is app, pat or github-token, not '$SOURCE'."; exit 1 ;;
+          esac
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app.outputs.token || secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+          target-branch: ${{ inputs.target-branch }}
+
+      # release-please names the tag of every released path in <path>--tag_name, and the tag of
+      # the root package in tag_name.
+      - name: Collect the tags
+        id: tags
+        shell: bash
+        env:
+          OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+        run: |
+          tags="$(jq -c '
+            [ (.paths_released // "[]" | fromjson)[] as $p
+              | (if $p == "." then .tag_name else .[$p + "--tag_name"] end) // empty ] | unique
+          ' <<<"$OUTPUTS")"
+          echo "tags=$tags" >>"$GITHUB_OUTPUT"
+          echo "Created tags: $tags"
+
+      - name: Start the release workflow for every tag
+        if: inputs.token-source == 'github-token' && inputs.dispatch-workflow != '' && steps.release.outputs.releases_created == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ inputs.dispatch-workflow }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            echo "Starting $WORKFLOW for $tag."
+            gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$tag"
+          done < <(jq -r '.[]' <<<"$TAGS")
+
+      - name: Open the back merge
+        if: inputs.back-merge-enabled && steps.release.outputs.releases_created == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          BASE: ${{ inputs.back-merge-branch }}
+          HEAD: ${{ inputs.target-branch }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          if [[ -n "$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$BASE" --head "$HEAD" --state open --json number --jq '.[].number')" ]]; then
+            echo "A back merge from $HEAD into $BASE is open already."
+            exit 0
+          fi
+          gh pr create --repo "$GITHUB_REPOSITORY" --base "$BASE" --head "$HEAD" \
+            --title "chore(release): merge $HEAD back into $BASE" \
+            --body "Brings the releases $(jq -r 'join(", ")' <<<"$TAGS") back into $BASE."

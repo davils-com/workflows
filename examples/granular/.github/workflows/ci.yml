@@ -1,0 +1,54 @@
+name: CI
+
+# The checks without the pipeline: every workflow is called on its own and gets only the
+# permissions it needs. Inputs instead of .github/davils-ci.yaml.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened]
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  pull-request:
+    name: Pull request
+    if: github.event_name == 'pull_request'
+    uses: davils-com/workflows/.github/workflows/pr-lint.yml@v1
+    permissions:
+      contents: read
+      pull-requests: read
+
+  dart:
+    name: Dart
+    uses: davils-com/workflows/.github/workflows/dart-ci.yml@v1
+    permissions:
+      contents: read
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    with:
+      sdks: '["stable","3.13.5"]'
+      os: '["ubuntu","macos","windows"]'
+      test-platforms: '["vm","chrome","chrome:dart2wasm"]'
+      coverage-min: 90
+      codecov-enabled: true
+      inspectra-enabled: true
+
+  inspectra:
+    name: Inspectra
+    uses: davils-com/workflows/.github/workflows/inspectra.yml@v1
+    permissions:
+      contents: read
+      security-events: write
+    with:
+      fail-on: high
+      profile: ci
