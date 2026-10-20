@@ -211,3 +211,13 @@ evaluate() {
   EVENT_NAME=push REF=refs/heads/main REF_NAME=main run evaluate "$config" "$discovery"
   [ "$(jq -r '.config.flutter["build-version"]' <<<"$output")" = beta ]
 }
+
+@test "a truncated list of changed files matches every path filter" {
+  cd "$FIXTURES/dart-workspace"
+  config="$(CONFIG_INLINE='dart: {when: {paths: ["packages/**"]}}' merge)"
+  discovery="$(run_script "$ACTIONS/discover-packages/scripts/discover.sh")"
+  affected='{"mode":"all","base":"abc","changed_files":["README.md"],"truncated":true,"paths":[]}'
+  CONFIG="$config" DISCOVERY="$discovery" AFFECTED="$affected" EVENT_NAME=pull_request BASE_REF=main \
+    run run_script "$ACTIONS/resolve-config/scripts/evaluate.sh"
+  [ "$(jq -r '.run.dart' <<<"$output")" = true ]
+}

@@ -25,9 +25,13 @@ DISCOVERY="${DISCOVERY:?DISCOVERY is required}"
 ROOT="${ROOT:-.}"
 all_paths="$(jq -c '[.packages[].path]' <<<"$DISCOVERY")"
 
+# The changed files travel between steps in environment variables, which Linux limits to 128 KB
+# each; a larger change keeps the first files and says so, and path filters then count as matched.
+MAX_CHANGED_FILES="${MAX_CHANGED_FILES:-1500}"
+
 emit() {
-  jq -cn --arg mode "$1" --arg base "${BASE_SHA:-}" --argjson changed "$2" --argjson paths "$3" \
-    '{mode: $mode, base: $base, changed_files: $changed, paths: $paths}'
+  jq -cn --arg mode "$1" --arg base "${BASE_SHA:-}" --argjson changed "$2" --argjson paths "$3" --argjson max "$MAX_CHANGED_FILES" \
+    '{mode: $mode, base: $base, changed_files: $changed[:$max], truncated: (($changed | length) > $max), paths: $paths}'
 }
 
 mode="$(tri_state "${MODE:-auto}")"

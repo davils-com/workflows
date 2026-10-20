@@ -133,3 +133,13 @@ MOCK
   run "$BASH_BIN" "$REPO/tools/push-tags.sh" --pause 0
   [[ "$output" == *"No tags to push."* ]]
 }
+
+@test "a failing test fails the test script" {
+  cd "$FIXTURES/broken"
+  dart pub get >/dev/null 2>&1 || skip "dart pub get needs the network"
+  PACKAGES='[{"name": "davils_ci_broken", "path": ".", "has_tests": true}]' OUT_DIR="$BATS_TEST_TMPDIR/out" \
+    COVERAGE=true run run_script "$ACTIONS/test-packages/scripts/test.sh"
+  rm -rf .dart_tool pubspec.lock coverage
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Tests failed in: davils_ci_broken"* ]]
+}

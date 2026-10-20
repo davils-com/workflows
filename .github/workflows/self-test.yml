@@ -49,7 +49,7 @@ jobs:
       affected-only: 'off'
       granularity: package
       downgrade-enabled: true
-      pana-enabled: ${{ github.event_name == 'schedule' || inputs.full }}
+      pana-enabled: ${{ github.event_name == 'schedule' || inputs.full == true }}
 
   dart-shards:
     name: Dart workspace in shards

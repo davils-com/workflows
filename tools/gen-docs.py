@@ -5,8 +5,9 @@ Writes docs/topics/reference/*.md: one topic per reusable workflow (inputs, secr
 one for the composite actions and one for every option of .github/davils-ci.yaml. Run
 tools/gen-docs.sh; self-lint fails when the committed topics are stale.
 
-Reads a JSON document on stdin: {"workflows": {file: workflow}, "actions": {dir: action},
-"defaults": {...}, "schema": {...}} and writes the topics into the directory given as argument.
+Usage: gen-docs.py <input> <target> <repository root>. The input directory holds
+workflows/<file>.json, actions/<name>.json, defaults.yaml and schema.json (tools/gen-docs.sh writes
+it); the topics go into the target directory.
 """
 
 import json
@@ -174,18 +175,32 @@ def config_topic(defaults_yaml, schema):
 
 
 def main():
-    data = json.load(sys.stdin)
-    target = sys.argv[1]
-    root = sys.argv[2]
+    source, target, root = sys.argv[1], sys.argv[2], sys.argv[3]
+
+    def load_dir(name, suffix):
+        result = {}
+        directory = os.path.join(source, name)
+        for entry in sorted(os.listdir(directory)):
+            with open(os.path.join(directory, entry), encoding="utf-8") as handle:
+                result[entry.removesuffix(suffix)] = json.load(handle)
+        return result
+
+    workflows = load_dir("workflows", ".json")
+    actions = load_dir("actions", ".json")
+    with open(os.path.join(source, "defaults.yaml"), encoding="utf-8") as handle:
+        defaults_yaml = handle.read()
+    with open(os.path.join(source, "schema.json"), encoding="utf-8") as handle:
+        schema = json.load(handle)
+
     os.makedirs(target, exist_ok=True)
     topics = {}
-    for file, workflow in sorted(data["workflows"].items()):
+    for file, workflow in sorted(workflows.items()):
         if file.startswith("self-"):
             continue
         name = "Workflow-" + file.removesuffix(".yml") + ".md"
         topics[name] = workflow_topic(file, workflow, root)
-    topics["Actions.md"] = actions_topic(data["actions"])
-    topics["Configuration-Reference.md"] = config_topic(data["defaults_yaml"], data["schema"])
+    topics["Actions.md"] = actions_topic(actions)
+    topics["Configuration-Reference.md"] = config_topic(defaults_yaml, schema)
     for name, text in topics.items():
         with open(os.path.join(target, name), "w", encoding="utf-8") as handle:
             handle.write(text)

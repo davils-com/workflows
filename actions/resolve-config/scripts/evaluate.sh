@@ -78,7 +78,7 @@ jq -cn -L "$LIB_DIR" \
   include "lib";
   $discovery.summary as $s
   | ($affected.changed_files // []) as $changed
-  | ($affected.base // "" | length > 0) as $diff_known
+  | ((($affected.base // "") | length > 0) and ($affected.truncated != true)) as $diff_known
   # Path globs are relative to the working directory, changed files to the repository root.
   | ($discovery.root | ltrimstr("./") | rtrimstr("/") | if . == "." then "" else . end) as $prefix
   | ($changed | map(if $prefix == "" then . elif startswith($prefix + "/") then ltrimstr($prefix + "/") else empty end)) as $relative

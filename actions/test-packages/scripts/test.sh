@@ -95,12 +95,14 @@ while IFS= read -r package; do
 
   echo "::group::Test $name ($path)"
   status=0
+  # The subshell runs in an || list, where bash ignores set -e; every command that can fail
+  # therefore exits the subshell with its status itself.
   (
-    cd "$path"
+    cd "$path" || exit 1
     export PACKAGE_NAME="$name" PACKAGE_PATH="$path"
     if [[ -n "${COMMAND:-}" ]]; then
-      bash -euo pipefail -c "$COMMAND"
-      exit $?
+      bash -euo pipefail -c "$COMMAND" || exit $?
+      exit 0
     fi
     first=true
     for platform_args in "${invocations[@]}"; do
@@ -115,17 +117,17 @@ while IFS= read -r package; do
       [[ -n "${ARGS:-}" ]] && args+=($ARGS)
       if [[ "$TOOL" == flutter ]]; then
         [[ "$coverage" == true && "$first" == true ]] && args+=(--coverage)
-        flutter test "${args[@]}"
+        flutter test "${args[@]}" || exit $?
       elif [[ "$coverage" == true && "$first" == true ]]; then
         if supports_coverage_path; then
-          dart test --coverage-path=coverage/lcov.info "${args[@]}"
+          dart test --coverage-path=coverage/lcov.info "${args[@]}" || exit $?
         else
-          dart test --coverage=coverage/raw "${args[@]}"
-          dart pub global activate coverage >/dev/null
-          dart pub global run coverage:format_coverage --lcov --in=coverage/raw --out=coverage/lcov.info --report-on=lib --package=.
+          dart test --coverage=coverage/raw "${args[@]}" || exit $?
+          dart pub global activate coverage >/dev/null || exit $?
+          dart pub global run coverage:format_coverage --lcov --in=coverage/raw --out=coverage/lcov.info --report-on=lib --package=. || exit $?
         fi
       else
-        dart test "${args[@]}"
+        dart test "${args[@]}" || exit $?
       fi
       first=false
     done
