@@ -45,7 +45,7 @@ if ((limit > 0)); then
           }
           for (i in pid) if (keep[pid[i]]) print substr(line[i], 1, 200)
         }' | head -40)"
-      echo "::error title=Inspectra ${label} timed out::It ran longer than ${TIMEOUT_MINUTES} minutes. The processes:%0A$(sed 's/%/%25/g' <<<"$tree" | awk 'BEGIN { ORS = "%0A" } 1')"
+      echo "::error title=Inspectra ${label} timed out::It ran longer than ${TIMEOUT_MINUTES} minutes. The processes:%0A$(awk 'BEGIN { ORS = "%0A" } 1' <<<"${tree//%/%25}")"
       pkill -TERM -P "$pid" 2>/dev/null
       kill -TERM "$pid" 2>/dev/null
     fi
