@@ -49,6 +49,7 @@ dart:
   test:
     enabled: true
     platforms: []
+    other-os-platforms: []
     command: ''
     args: ''
     report: false
@@ -59,6 +60,8 @@ dart:
     codecov: false
   build-runner:
     enabled: auto
+    command: ''
+  verify:
     command: ''
   publish-dry-run:
     enabled: auto
@@ -98,6 +101,8 @@ flutter:
     codecov: false
   build-runner:
     enabled: auto
+    command: ''
+  verify:
     command: ''
   publish-dry-run:
     enabled: auto

@@ -90,15 +90,36 @@ jobs:
         with:
           persist-credentials: false
 
+      # The base path comes from the Pages settings; without a deployment (and so without Pages
+      # being set up) it is the one of a project site.
       - name: Set up Pages
         id: pages
+        if: inputs.deploy-enabled
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Pick the base path
+        id: base
+        shell: bash
+        env:
+          CNAME: ${{ inputs.cname }}
+          DEPLOY: ${{ inputs.deploy-enabled }}
+          CONFIGURED: ${{ steps.pages.outputs.base_path }}
+          REPOSITORY: ${{ github.event.repository.name }}
+        run: |
+          if [[ -n "$CNAME" ]]; then
+            path=''
+          elif [[ "$DEPLOY" == true ]]; then
+            path="$CONFIGURED"
+          else
+            path="/$REPOSITORY"
+          fi
+          echo "path=$path" >>"$GITHUB_OUTPUT"
 
       - name: Assemble the site
         uses: $/actions/pages-assemble
         with:
           layout: ${{ inputs.layout }}
-          base-path: ${{ inputs.cname == '' && steps.pages.outputs.base_path || '' }}
+          base-path: ${{ steps.base.outputs.path }}
           landing-page: ${{ inputs.landing-page }}
           cname: ${{ inputs.cname }}
           spa-fallback: ${{ inputs.spa-fallback }}

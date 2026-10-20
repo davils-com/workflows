@@ -61,10 +61,12 @@ jobs:
 | `analyze-command` | string | empty | Replaces the analyzer run (dart analyze or flutter analyze per package). |
 | `build-runner-enabled` | string | `auto` | true, false or auto (packages with build_runner); checks that the generated files are committed. |
 | `build-runner-command` | string | empty | Replaces dart run build_runner build --delete-conflicting-outputs. |
+| `verify-command` | string | empty | Extra checks run once in the format and analyze job, at the working directory, such as checks of generated files. |
 | `l10n-enabled` | string | `auto` | true, false or auto (packages with l10n.yaml); checks that flutter gen-l10n output is committed. |
 | `publish-dry-run-enabled` | string | `auto` | true, false or auto (publishable packages); runs pub publish --dry-run. |
 | `test-enabled` | boolean | `true` | Run the tests. |
 | `test-platforms` | string | empty | JSON array of dart test platforms (vm, chrome, firefox, node, chrome:dart2wasm); empty uses dart_test.yaml. |
+| `test-platforms-other-os` | string | empty | JSON array of dart test platforms for every operating system but the first of os; empty uses test-platforms. |
 | `test-command` | string | empty | Replaces the test command; runs in every package directory with PACKAGE_NAME and PACKAGE_PATH set. |
 | `test-args` | string | empty | Extra arguments for dart test or flutter test. |
 | `test-exclude-tags` | string | empty | Tags to skip. |

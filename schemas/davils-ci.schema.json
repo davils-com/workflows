@@ -180,6 +180,13 @@
               },
               "default": []
             },
+            "other-os-platforms": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
             "command": {
               "type": "string",
               "default": ""
@@ -230,6 +237,16 @@
               "$ref": "#/$defs/toggle",
               "default": "auto"
             },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "verify": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
             "command": {
               "type": "string",
               "default": ""
@@ -416,6 +433,16 @@
               "$ref": "#/$defs/toggle",
               "default": "auto"
             },
+            "command": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+        "verify": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
             "command": {
               "type": "string",
               "default": ""

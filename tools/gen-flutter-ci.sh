@@ -5,8 +5,10 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 generated="$(yq -o=json '.on.workflow_call.inputs' .github/workflows/dart-ci.yml | python3 tools/gen-flutter-ci.py)"
 if [[ "${1:-}" == --check ]]; then
-  if ! diff -u .github/workflows/flutter-ci.yml <(printf '%s\n' "$generated"); then
-    echo "::error::.github/workflows/flutter-ci.yml is stale; run tools/gen-flutter-ci.sh." >&2
+  # shellcheck source=drift.sh
+  source tools/drift.sh
+  if ! difference="$(diff -u .github/workflows/flutter-ci.yml <(printf '%s\n' "$generated"))"; then
+    report_drift .github/workflows/flutter-ci.yml tools/gen-flutter-ci.sh "$difference"
     exit 1
   fi
 else

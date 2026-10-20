@@ -23,6 +23,7 @@ OVERRIDES = {
     "analyze-command": {"description": "Replaces flutter analyze per package."},
     "build-runner-command": {"description": "Replaces flutter pub run build_runner build --delete-conflicting-outputs."},
     "test-platforms": None,
+    "test-platforms-other-os": None,
 }
 
 HEADER = """name: Flutter CI

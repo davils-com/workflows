@@ -10,5 +10,6 @@ class LabelView extends StatelessWidget {
   const LabelView({super.key});
 
   @override
-  Widget build(BuildContext context) => const Text(label, textDirection: TextDirection.ltr);
+  Widget build(BuildContext context) =>
+      const Text(label, textDirection: TextDirection.ltr);
 }

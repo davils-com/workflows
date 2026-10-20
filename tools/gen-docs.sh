@@ -22,8 +22,10 @@ if [[ "${1:-}" == --check ]]; then
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT
   collect | python3 tools/gen-docs.py "$work" "$PWD" >/dev/null
-  if ! diff -ru docs/topics/reference "$work"; then
-    echo "::error::docs/topics/reference is stale; run tools/gen-docs.sh." >&2
+  # shellcheck source=drift.sh
+  source tools/drift.sh
+  if ! difference="$(diff -ru docs/topics/reference "$work")"; then
+    report_drift docs/topics/reference tools/gen-docs.sh "$difference"
     exit 1
   fi
 else

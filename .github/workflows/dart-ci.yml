@@ -161,6 +161,10 @@ on:
         description: Replaces dart run build_runner build --delete-conflicting-outputs.
         type: string
         default: ''
+      verify-command:
+        description: Extra checks run once in the format and analyze job, at the working directory, such as checks of generated files.
+        type: string
+        default: ''
       l10n-enabled:
         description: true, false or auto (packages with l10n.yaml); checks that flutter gen-l10n output is committed.
         type: string
@@ -177,6 +181,10 @@ on:
         default: true
       test-platforms:
         description: JSON array of dart test platforms (vm, chrome, firefox, node, chrome:dart2wasm); empty uses dart_test.yaml.
+        type: string
+        default: ''
+      test-platforms-other-os:
+        description: JSON array of dart test platforms for every operating system but the first of os; empty uses test-platforms.
         type: string
         default: ''
       test-command:
@@ -436,12 +444,20 @@ jobs:
         shell: bash
         env:
           COMMAND: ${{ inputs.format-command }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: |
           if [[ -n "$COMMAND" ]]; then
             bash -euo pipefail -c "$COMMAND"
-          else
-            dart format --output=none --set-exit-if-changed .
+            exit 0
           fi
+          status=0
+          output="$(dart format --output=none --set-exit-if-changed . 2>&1)" || status=$?
+          echo "$output"
+          # Every file that is not formatted becomes an annotation.
+          while IFS= read -r file; do
+            echo "::error file=${WORKING_DIRECTORY%/}/${file},title=Not formatted::Run dart format on this file."
+          done < <(sed -n 's/^Changed //p' <<<"$output")
+          exit "$status"
 
       # Every package on its own: a package outside the workspace has its own resolution, and
       # analyzing the root would report its imports as unresolved. Root level sources of a
@@ -481,6 +497,14 @@ jobs:
             echo "::error::The analyzer reported problems in: ${failed[*]}."
             exit 1
           fi
+
+      - name: Run the extra checks
+        if: ${{ inputs.verify-command != '' && !cancelled() }}
+        uses: $/actions/run-hook
+        with:
+          name: verify
+          run: ${{ inputs.verify-command }}
+          working-directory: ${{ inputs.working-directory }}
 
       - name: Check the generated sources
         if: ${{ !contains(fromJSON('["false","off","no"]'), inputs.build-runner-enabled) && !cancelled() }}
@@ -622,7 +646,7 @@ jobs:
           tool: ${{ inputs.toolchain }}
           packages: ${{ toJSON(matrix.packages) }}
           working-directory: ${{ inputs.working-directory }}
-          platforms: ${{ inputs.test-platforms }}
+          platforms: ${{ (!matrix.first_os && inputs.test-platforms-other-os) || inputs.test-platforms }}
           command: ${{ inputs.test-command }}
           args: ${{ inputs.test-args }}
           exclude-tags: ${{ inputs.golden-enabled && inputs.golden-tags || inputs.test-exclude-tags }}

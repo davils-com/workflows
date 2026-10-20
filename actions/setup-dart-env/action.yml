@@ -59,6 +59,8 @@ outputs:
 runs:
   using: composite
   steps:
+    # setup-dart registers dart-analyzer.json from GITHUB_ACTION_PATH, which inside this composite
+    # action is this directory; the copy next to this file is the one of the pinned release.
     - name: Set up Dart ${{ inputs.sdk }}
       uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
       with:

@@ -57,6 +57,7 @@ jobs:
 | `analyze-command` | string | empty | Replaces flutter analyze per package. |
 | `build-runner-enabled` | string | `auto` | true, false or auto (packages with build_runner); checks that the generated files are committed. |
 | `build-runner-command` | string | empty | Replaces flutter pub run build_runner build --delete-conflicting-outputs. |
+| `verify-command` | string | empty | Extra checks run once in the format and analyze job, at the working directory, such as checks of generated files. |
 | `l10n-enabled` | string | `auto` | true, false or auto (packages with l10n.yaml); checks that flutter gen-l10n output is committed. |
 | `publish-dry-run-enabled` | string | `auto` | true, false or auto (publishable packages); runs pub publish --dry-run. |
 | `test-enabled` | boolean | `true` | Run the tests. |

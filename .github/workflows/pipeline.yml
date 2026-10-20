@@ -267,9 +267,11 @@ jobs:
       analyze-command: ${{ fromJSON(needs.config.outputs.config).dart.analyze.command }}
       build-runner-enabled: ${{ fromJSON(needs.config.outputs.config).dart.build-runner.enabled }}
       build-runner-command: ${{ fromJSON(needs.config.outputs.config).dart.build-runner.command }}
+      verify-command: ${{ fromJSON(needs.config.outputs.config).dart.verify.command }}
       publish-dry-run-enabled: ${{ fromJSON(needs.config.outputs.config).dart.publish-dry-run.enabled }}
       test-enabled: ${{ fromJSON(needs.config.outputs.config).dart.test.enabled }}
       test-platforms: ${{ toJSON(fromJSON(needs.config.outputs.config).dart.test.platforms) }}
+      test-platforms-other-os: ${{ fromJSON(needs.config.outputs.config).dart.test.other-os-platforms[0] && toJSON(fromJSON(needs.config.outputs.config).dart.test.other-os-platforms) || '' }}
       test-command: ${{ fromJSON(needs.config.outputs.config).dart.test.command }}
       test-args: ${{ fromJSON(needs.config.outputs.config).dart.test.args }}
       test-report-enabled: ${{ fromJSON(needs.config.outputs.config).dart.test.report }}
@@ -322,6 +324,7 @@ jobs:
       analyze-command: ${{ fromJSON(needs.config.outputs.config).flutter.analyze.command }}
       build-runner-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.build-runner.enabled }}
       build-runner-command: ${{ fromJSON(needs.config.outputs.config).flutter.build-runner.command }}
+      verify-command: ${{ fromJSON(needs.config.outputs.config).flutter.verify.command }}
       l10n-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.l10n.enabled }}
       publish-dry-run-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.publish-dry-run.enabled }}
       test-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.test.enabled }}

@@ -30,7 +30,7 @@ jobs:
 | `discovery` | string | empty | Packages discovered before; empty discovers them here. |
 | `title-enabled` | boolean | `true` | Check the title. |
 | `types` | string | empty | Allowed types, newline separated; empty allows the Conventional Commits types. |
-| `scopes` | string | `auto` | auto (the package names plus extra-scopes), none (any scope) or a newline separated list. |
+| `scopes` | string | `auto` | auto (in a workspace the package names plus extra-scopes, otherwise any scope), none (any scope) or a newline separated list. |
 | `extra-scopes` | string | `deps\nci\ndocs\nrelease\nworkspace` | Scopes allowed besides the package names, newline separated. |
 | `require-scope` | boolean | `false` | Require a scope. |
 | `subject-pattern` | string | empty | Regular expression the subject has to match, such as ^(?![A-Z]).+$. |

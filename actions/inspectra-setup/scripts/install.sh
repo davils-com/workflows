@@ -22,7 +22,8 @@ version="${VERSION:-latest}"
 repository="${REPOSITORY:-davils-com/Inspectra}"
 
 if [[ "$mode" == auto ]]; then
-  if [[ -f pubspec.yaml ]] && [[ "$(yq -r '(.dev_dependencies // {} | has("inspectra")) or (.dependencies // {} | has("inspectra"))' pubspec.yaml)" == true ]]; then
+  # The dev dependency, or the Inspectra repository itself, which checks itself with its source.
+  if [[ -f pubspec.yaml ]] && [[ "$(yq -r '(.dev_dependencies // {} | has("inspectra")) or (.dependencies // {} | has("inspectra")) or .name == "inspectra"' pubspec.yaml)" == true ]]; then
     mode=dev-dependency
   else
     mode=global

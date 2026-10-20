@@ -32,6 +32,7 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `dart.analyze.command` | empty | string |
 | `dart.test.enabled` | `true` | `true`, `false`, `auto` |
 | `dart.test.platforms` | `[]` | list of string |
+| `dart.test.other-os-platforms` | `[]` | list of string |
 | `dart.test.command` | empty | string |
 | `dart.test.args` | empty | string |
 | `dart.test.report` | `false` | boolean |
@@ -41,6 +42,7 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `dart.coverage.codecov` | `false` | boolean |
 | `dart.build-runner.enabled` | `auto` | `true`, `false`, `auto` |
 | `dart.build-runner.command` | empty | string |
+| `dart.verify.command` | empty | string |
 | `dart.publish-dry-run.enabled` | `auto` | `true`, `false`, `auto` |
 | `dart.pana.enabled` | `false` | `true`, `false`, `auto` |
 | `dart.pana.min-points` | `0` | integer |
@@ -67,6 +69,7 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `flutter.coverage.codecov` | `false` | boolean |
 | `flutter.build-runner.enabled` | `auto` | `true`, `false`, `auto` |
 | `flutter.build-runner.command` | empty | string |
+| `flutter.verify.command` | empty | string |
 | `flutter.publish-dry-run.enabled` | `auto` | `true`, `false`, `auto` |
 | `flutter.golden.enabled` | `false` | `true`, `false`, `auto` |
 | `flutter.golden.os` | `macos` | `ubuntu`, `macos`, `windows` |
@@ -273,6 +276,7 @@ dart:
   test:
     enabled: true
     platforms: []
+    other-os-platforms: []
     command: ''
     args: ''
     report: false
@@ -283,6 +287,8 @@ dart:
     codecov: false
   build-runner:
     enabled: auto
+    command: ''
+  verify:
     command: ''
   publish-dry-run:
     enabled: auto
@@ -322,6 +328,8 @@ flutter:
     codecov: false
   build-runner:
     enabled: auto
+    command: ''
+  verify:
     command: ''
   publish-dry-run:
     enabled: auto

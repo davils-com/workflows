@@ -84,6 +84,7 @@ runs:
         # The same commands as JetBrains/writerside-github-action, with the inputs passed as
         # environment variables instead of being spliced into the script.
         docker pull --quiet "$IMAGE"
+        log="$RUNNER_TEMP/writerside-build.log"
         docker run --rm \
           -v "$GITHUB_WORKSPACE:/github/workspace" \
           -e INSTANCE -e LOCATION -e PDF -e IS_GROUP \
@@ -99,13 +100,20 @@ runs:
             /opt/builder/bin/idea.sh helpbuilderinspect -source-dir "$source_dir" "${target[@]}" "${pdf[@]}" \
               --runner github -output-dir "$source_dir/artifacts/" || true
             chmod -R a+rwX "$source_dir/artifacts" 2>/dev/null || true
-          '
+          ' 2>&1 | tee "$log"
         dir="${LOCATION:+$LOCATION/}artifacts"
         if [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
-          echo "::error::The Writerside build of $INSTANCE wrote no artifacts."
+          # The builder's errors as annotations, so the cause shows without the log.
+          grep -E 'ERROR|SEVERE|Exception|error:|[Ff]ailed' "$log" | grep -v 'Xvfb\|xkbcomp\|dbus' | head -15 |
+            while IFS= read -r line; do echo "::error title=Writerside build::${line//%/%25}"; done
+          echo "::error::The Writerside build of $INSTANCE wrote no artifacts; the builder's errors are above."
           exit 1
         fi
         ls -la "$dir"
+        # Errors of the build report (broken links, unknown topics) as annotations as well.
+        if [[ -f "$dir/report.json" ]]; then
+          jq -r '(.errors // [])[] | "::error title=Writerside::\(.file // ""): \(.message // .)"' "$dir/report.json" 2>/dev/null | head -20 || true
+        fi
 
     - name: Build with the Writerside action
       if: inputs.builder == 'action'

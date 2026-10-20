@@ -30,7 +30,7 @@ on:
         type: string
         default: ''
       scopes:
-        description: auto (the package names plus extra-scopes), none (any scope) or a newline separated list.
+        description: auto (in a workspace the package names plus extra-scopes, otherwise any scope), none (any scope) or a newline separated list.
         type: string
         default: auto
       extra-scopes:
@@ -128,7 +128,12 @@ jobs:
           case "$MODE" in
             none) scopes='' ;;
             auto)
-              scopes="$( { jq -r '.packages[].name' <<<"$discovery"; printf '%s\n' "$EXTRA"; } | grep -v '^$' | sort -u)"
+              # A workspace scopes by package; a single package leaves the scope free.
+              if jq -e '.workspace.enabled' <<<"$discovery" >/dev/null; then
+                scopes="$( { jq -r '.packages[].name' <<<"$discovery"; printf '%s\n' "$EXTRA"; } | grep -v '^$' | sort -u)"
+              else
+                scopes=''
+              fi
               ;;
             *) scopes="$MODE" ;;
           esac

@@ -149,6 +149,10 @@ on:
         description: "Replaces flutter pub run build_runner build --delete-conflicting-outputs."
         type: string
         default: ''
+      verify-command:
+        description: "Extra checks run once in the format and analyze job, at the working directory, such as checks of generated files."
+        type: string
+        default: ''
       l10n-enabled:
         description: "true, false or auto (packages with l10n.yaml); checks that flutter gen-l10n output is committed."
         type: string
@@ -291,6 +295,7 @@ jobs:
       analyze-command: ${{ inputs.analyze-command }}
       build-runner-enabled: ${{ inputs.build-runner-enabled }}
       build-runner-command: ${{ inputs.build-runner-command }}
+      verify-command: ${{ inputs.verify-command }}
       l10n-enabled: ${{ inputs.l10n-enabled }}
       publish-dry-run-enabled: ${{ inputs.publish-dry-run-enabled }}
       test-enabled: ${{ inputs.test-enabled }}

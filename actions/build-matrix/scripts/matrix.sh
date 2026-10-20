@@ -113,7 +113,8 @@ jq -cn \
           runner: runner($o.value),
           sdk: $version,
           sdk_label: $s.value,
-          primary: ($o.key == 0 and $s.key == 0)
+          primary: ($o.key == 0 and $s.key == 0),
+          first_os: ($o.key == 0)
         }
     ] as $include
   | {include: $include, count: ($include | length), granularity: $g, packages: $pkgs}
