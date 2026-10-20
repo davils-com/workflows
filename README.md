@@ -83,7 +83,7 @@ release:
     package: '{package}-v{version}'
 ```
 
-Pin a release for reproducible builds: `@v0.1.0` <!-- x-release-please-version -->, or a commit SHA.
+Pin a release for reproducible builds: `@v0.2.0` <!-- x-release-please-version -->, or a commit SHA.
 
 ## Workflows
 

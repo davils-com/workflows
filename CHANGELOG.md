@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file. The format foll
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). release-please writes the entries of
 each release from the Conventional Commits merged since the last one.
 
+## [0.2.0](https://github.com/davils-com/workflows/compare/v0.1.0...v0.2.0) (2026-10-20)
+
+
+### Added
+
+* add the reusable workflows for Dart, Flutter, Inspectra, docs and releases ([3eff1f4](https://github.com/davils-com/workflows/commit/3eff1f4e44fa0655c71ee3a35e6418d6c3e6bc35))
+
 ## [Unreleased]
 
 ### Added
