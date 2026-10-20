@@ -35,7 +35,8 @@ jobs:
       working-directory: tests/fixtures/dart-single
       affected-only: 'off'
       sdks: '["stable","lowest"]'
-      os: ${{ (github.event_name == 'schedule' || inputs.full) && '["ubuntu","macos","windows"]' || '["ubuntu"]' }}
+      # Every operating system on every run: the scripts run under macOS's bash 3.2 and Git Bash too.
+      os: '["ubuntu","macos","windows"]'
       test-report-enabled: true
 
   dart-workspace:

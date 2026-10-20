@@ -31,6 +31,10 @@ inputs:
     description: Sets INSPECTRA_PROFILE.
     required: false
     default: ''
+  timeout-minutes:
+    description: Stops the run after this many minutes and reports the processes that still run; 0 never stops it.
+    required: false
+    default: '0'
 
 runs:
   using: composite
@@ -46,6 +50,7 @@ runs:
         TOLERATE_INCOMPLETE: ${{ inputs.tolerate-incomplete }}
         CONFIG_FILE: ${{ inputs.config-file }}
         PROFILE: ${{ inputs.profile }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
       run: |
         [[ -n "$CONFIG_FILE" ]] && export INSPECTRA_CONFIG="$CONFIG_FILE"
         [[ -n "$PROFILE" ]] && export INSPECTRA_PROFILE="$PROFILE"

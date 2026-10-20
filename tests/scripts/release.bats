@@ -143,3 +143,14 @@ MOCK
   [ "$status" -ne 0 ]
   [[ "$output" == *"Tests failed in: davils_ci_broken"* ]]
 }
+
+@test "the test script runs under bash 3.2, the bash of macOS runners" {
+  [[ -x /bin/bash ]] && [[ "$(/bin/bash -c 'echo ${BASH_VERSINFO[0]}')" == 3 ]] || skip "no bash 3.2 here"
+  cd "$FIXTURES/broken"
+  dart pub get >/dev/null 2>&1 || skip "dart pub get needs the network"
+  PACKAGES='[{"name": "davils_ci_broken", "path": ".", "has_tests": true}]' OUT_DIR="$BATS_TEST_TMPDIR/out" \
+    run /bin/bash "$ACTIONS/test-packages/scripts/test.sh"
+  rm -rf .dart_tool pubspec.lock coverage
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"fails on purpose"* ]]
+}

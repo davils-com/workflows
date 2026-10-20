@@ -51,7 +51,7 @@ if [[ -n "$base" && ! "$base" =~ ^0+$ ]]; then
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
       auth=(-c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')")
     fi
-    git "${auth[@]}" fetch --no-tags --quiet --depth=1 origin "$base" 2>/dev/null || true
+    git ${auth[@]+"${auth[@]}"} fetch --no-tags --quiet --depth=1 origin "$base" 2>/dev/null || true
   fi
   if git cat-file -e "${base}^{commit}" 2>/dev/null; then
     # Two dots on purpose: for a pull request HEAD is the merge commit whose first parent is the

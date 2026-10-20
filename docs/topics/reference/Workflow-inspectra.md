@@ -53,6 +53,7 @@ jobs:
 | `version` | string | `latest` | Inspectra version for global and binary installs; latest or a version. |
 | `config-file` | string | empty | Sets INSPECTRA_CONFIG for every command. |
 | `profile` | string | empty | Sets INSPECTRA_PROFILE for every command, such as ci. |
+| `check-timeout-minutes` | number | `20` | Stops inspectra check of a package after this many minutes and reports the processes that hang. |
 | `tolerate-incomplete` | boolean | `false` | Turn exit code 69 (OSV, pub.dev, Trivy or git unavailable) into a warning. |
 | `check-enabled` | boolean | `true` | Run inspectra check for every package with an Inspectra configuration. |
 | `check-root` | string | `auto` | true, false or auto (at the root of a workspace); also checks the workspace root, where the workspace policy lives. |

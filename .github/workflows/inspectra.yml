@@ -116,6 +116,10 @@ on:
         description: Sets INSPECTRA_PROFILE for every command, such as ci.
         type: string
         default: ''
+      check-timeout-minutes:
+        description: Stops inspectra check of a package after this many minutes and reports the processes that hang.
+        type: number
+        default: 20
       tolerate-incomplete:
         description: Turn exit code 69 (OSV, pub.dev, Trivy or git unavailable) into a warning.
         type: boolean
@@ -385,6 +389,7 @@ jobs:
           label: check (${{ matrix.label }})
           working-directory: ${{ inputs.working-directory }}
           tolerate-incomplete: ${{ inputs.tolerate-incomplete }}
+          timeout-minutes: ${{ inputs.check-timeout-minutes }}
           config-file: ${{ inputs.config-file }}
           profile: ${{ inputs.profile }}
 

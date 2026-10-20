@@ -119,23 +119,23 @@ while IFS= read -r package; do
       [[ -n "${ARGS:-}" ]] && args+=($ARGS)
       if [[ "$TOOL" == flutter ]]; then
         [[ "$coverage" == true && "$first" == true ]] && args+=(--coverage)
-        flutter test "${args[@]}" 2>&1 | tee -a "$log"
+        flutter test ${args[@]+"${args[@]}"} 2>&1 | tee -a "$log"
         status="${PIPESTATUS[0]}"
         ((status == 0)) || exit "$status"
       elif [[ "$coverage" == true && "$first" == true ]]; then
         if supports_coverage_path; then
-          dart test --coverage-path=coverage/lcov.info "${args[@]}" 2>&1 | tee -a "$log"
+          dart test --coverage-path=coverage/lcov.info ${args[@]+"${args[@]}"} 2>&1 | tee -a "$log"
           status="${PIPESTATUS[0]}"
           ((status == 0)) || exit "$status"
         else
-          dart test --coverage=coverage/raw "${args[@]}" 2>&1 | tee -a "$log"
+          dart test --coverage=coverage/raw ${args[@]+"${args[@]}"} 2>&1 | tee -a "$log"
           status="${PIPESTATUS[0]}"
           ((status == 0)) || exit "$status"
           dart pub global activate coverage >/dev/null || exit $?
           dart pub global run coverage:format_coverage --lcov --in=coverage/raw --out=coverage/lcov.info --report-on=lib --package=. || exit $?
         fi
       else
-        dart test "${args[@]}" 2>&1 | tee -a "$log"
+        dart test ${args[@]+"${args[@]}"} 2>&1 | tee -a "$log"
         status="${PIPESTATUS[0]}"
         ((status == 0)) || exit "$status"
       fi

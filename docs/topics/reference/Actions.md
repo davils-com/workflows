@@ -116,6 +116,7 @@ Runs an Inspectra command and turns its exit code into a clear annotation: findi
 | `tolerate-incomplete` | `false` | Turn exit code 69 (a service or tool was unavailable) into a warning. |
 | `config-file` | empty | Sets INSPECTRA_CONFIG. |
 | `profile` | empty | Sets INSPECTRA_PROFILE. |
+| `timeout-minutes` | `0` | Stops the run after this many minutes and reports the processes that still run; 0 never stops it. |
 
 ## inspectra-scan
 

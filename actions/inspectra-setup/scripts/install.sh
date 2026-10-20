@@ -55,9 +55,9 @@ case "$mode" in
     [[ -n "${GITHUB_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
     api="https://api.github.com/repos/$repository/releases"
     if [[ "$version" == latest ]]; then
-      release="$(curl -fsSL "${auth[@]}" "$api/latest")"
+      release="$(curl -fsSL ${auth[@]+"${auth[@]}"} "$api/latest")"
     else
-      release="$(curl -fsSL "${auth[@]}" "$api/tags/v$version" 2>/dev/null || curl -fsSL "${auth[@]}" "$api/tags/$version")"
+      release="$(curl -fsSL ${auth[@]+"${auth[@]}"} "$api/tags/v$version" 2>/dev/null || curl -fsSL ${auth[@]+"${auth[@]}"} "$api/tags/$version")"
     fi
     tag="$(jq -r '.tag_name' <<<"$release")"
     asset_url() { jq -r --arg n "$1" '.assets[] | select(.name == $n) | .browser_download_url' <<<"$release"; }
