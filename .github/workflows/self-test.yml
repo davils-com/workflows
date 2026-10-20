@@ -163,8 +163,14 @@ jobs:
           CONFIG: ${{ steps.config.outcome }}
           PAGES: ${{ steps.pages.outcome }}
         run: |
-          echo "test=$TEST tag=$TAG config=$CONFIG pages=$PAGES"
-          [[ "$TEST" == failure && "$TAG" == failure && "$CONFIG" == failure && "$PAGES" == failure ]]
+          status=0
+          for check in "test:$TEST" "tag:$TAG" "config:$CONFIG" "pages:$PAGES"; do
+            if [[ "${check#*:}" != failure ]]; then
+              echo "::error title=Negative test::The step '${check%%:*}' did not fail (outcome ${check#*:})."
+              status=1
+            fi
+          done
+          exit "$status"
 
   inspectra:
     name: Inspectra
@@ -172,6 +178,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     with:
       working-directory: tests/fixtures/dart-single
       affected-only: 'off'
@@ -218,6 +225,8 @@ jobs:
     with:
       working-directory: tests/fixtures/dart-single
       targets: ${{ (github.event_name == 'schedule' || inputs.full) && '["linux-x64","linux-arm64","macos-arm64","macos-x64","windows-x64","windows-arm64"]' || '["linux-x64"]' }}
+      # The release job compiles the same executable; its own prefix keeps the names apart.
+      artifact-prefix: selftest-assets
 
   pages:
     name: GitHub Pages
@@ -251,7 +260,7 @@ jobs:
       - name: Download the binary
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-assets-single-linux-x64
+          name: selftest-assets-davils_ci_single-single-linux-x64
           path: ${{ runner.temp }}/binary
 
       - name: The site has every part
@@ -303,8 +312,8 @@ jobs:
       id-token: write
       attestations: write
     with:
-      working-directory: tests/fixtures/dart-workspace
-      config-file: tests/fixtures/dart-workspace/davils-ci.yaml
+      working-directory: tests/fixtures/pipeline-workspace
+      config-file: tests/fixtures/pipeline-workspace/davils-ci.yaml
       pages: 'off'
       pr-lint: 'off'
       release: none

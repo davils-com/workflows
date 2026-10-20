@@ -15,7 +15,7 @@ Builds Flutter apps for every enabled target, each on the runner it needs:
   windows-x64     windows   windows-arm64 on an ARM runner
 
 Every build is an artifact flutter-<app>-<target>; with release-assets it is also an artifact
-release-assets-<app>-<target> that github-release.yml attaches to the release.
+release-assets-flutter-<app>-<target> that github-release.yml attaches to the release.
 
 Signing secrets that live in an environment only reach the build when `environment` names it.
 ```
@@ -49,12 +49,14 @@ jobs:
 | `obfuscate` | boolean | `false` | Obfuscate Dart code; the symbols become an artifact flutter-<app>-<target>-symbols. |
 | `web-wasm` | boolean | `false` | Build web with WebAssembly. |
 | `android-split-per-abi` | boolean | `false` | Build one APK per ABI. |
+| `android-signing` | string | `auto` | auto or true (sign when the ANDROID_* secrets are set; true fails without them) or false (never sign). |
+| `apple-signing` | string | `auto` | auto or true (sign when the APPLE_* secrets are set; true fails without them) or false (never sign). |
 | `export-options-plist` | string | empty | ExportOptions.plist for a signed ipa, relative to the app. |
 | `macos-notarize` | boolean | `false` | Notarize and staple the macOS app (secrets APP_STORE_CONNECT_*). |
 | `java-version` | string | `17` | Java version for Android builds. |
 | `xcode-version` | string | empty | Xcode to select on macOS runners, such as 26.0; empty keeps the default. |
 | `environment` | string | empty | Environment of the build jobs, for signing secrets stored in an environment. |
-| `release-assets` | boolean | `false` | Also upload every build as release-assets-<app>-<target> for github-release.yml. |
+| `release-assets` | boolean | `false` | Also upload every build as release-assets-flutter-<app>-<target> for github-release.yml. |
 | `pages-part-enabled` | boolean | `false` | Hand web builds to pages.yml as the part web. |
 | `runners` | string | `{}` | JSON object of runner labels (linux, linux-arm, macos, windows, windows-arm). |
 | `timeout-minutes` | number | `60` | Timeout of every build job. |

@@ -202,7 +202,7 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           base-sha: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           base-ref: ${{ github.base_ref || github.event.merge_group.base_ref }}
-          is-fork: ${{ github.event.pull_request.head.repo.fork || false }}
+          is-fork: ${{ github.event.pull_request.head.repo.full_name != '' && github.event.pull_request.head.repo.full_name != github.repository }}
 
   pr-lint:
     name: Pull request
@@ -242,8 +242,11 @@ jobs:
     with:
       toolchain: dart
       working-directory: ${{ needs.config.outputs.working-directory }}
+      pub-hosted-url: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-hosted-url }}
+      git-host: ${{ fromJSON(needs.config.outputs.config).dependencies.git-host }}
+      pub-get-args: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-get-args }}
       discovery: ${{ needs.config.outputs.discovery }}
-      affected-only: ${{ fromJSON(needs.config.outputs.config).packages.affected-only }}
+      affected-only: ${{ format('{0}', fromJSON(needs.config.outputs.config).packages.affected-only) }}
       always-all-paths: ${{ toJSON(fromJSON(needs.config.outputs.config).packages.always-all-paths) }}
       granularity: ${{ fromJSON(needs.config.outputs.config).packages.granularity }}
       shards: ${{ fromJSON(needs.config.outputs.config).packages.shards }}
@@ -265,10 +268,10 @@ jobs:
       analyze-enabled: ${{ fromJSON(needs.config.outputs.config).dart.analyze.enabled }}
       analyze-fatal-infos: ${{ fromJSON(needs.config.outputs.config).dart.analyze.fatal-infos }}
       analyze-command: ${{ fromJSON(needs.config.outputs.config).dart.analyze.command }}
-      build-runner-enabled: ${{ fromJSON(needs.config.outputs.config).dart.build-runner.enabled }}
+      build-runner-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).dart.build-runner.enabled) }}
       build-runner-command: ${{ fromJSON(needs.config.outputs.config).dart.build-runner.command }}
       verify-command: ${{ fromJSON(needs.config.outputs.config).dart.verify.command }}
-      publish-dry-run-enabled: ${{ fromJSON(needs.config.outputs.config).dart.publish-dry-run.enabled }}
+      publish-dry-run-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).dart.publish-dry-run.enabled) }}
       test-enabled: ${{ fromJSON(needs.config.outputs.config).dart.test.enabled }}
       test-platforms: ${{ toJSON(fromJSON(needs.config.outputs.config).dart.test.platforms) }}
       test-platforms-other-os: ${{ fromJSON(needs.config.outputs.config).dart.test.other-os-platforms[0] && toJSON(fromJSON(needs.config.outputs.config).dart.test.other-os-platforms) || '' }}
@@ -276,11 +279,12 @@ jobs:
       test-args: ${{ fromJSON(needs.config.outputs.config).dart.test.args }}
       test-report-enabled: ${{ fromJSON(needs.config.outputs.config).dart.test.report }}
       coverage-enabled: ${{ fromJSON(needs.config.outputs.config).dart.coverage.enabled }}
+      coverage-aggregate: false
       coverage-source: ${{ fromJSON(needs.config.outputs.config).dart.coverage.source }}
       coverage-min: ${{ fromJSON(needs.config.outputs.config).dart.coverage.min }}
       codecov-enabled: ${{ fromJSON(needs.config.outputs.config).dart.coverage.codecov }}
       inspectra-enabled: ${{ fromJSON(needs.config.outputs.run).inspectra }}
-      pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.coverage }}
+      pages-part-enabled: false
       pana-enabled: ${{ fromJSON(needs.config.outputs.config).dart.pana.enabled }}
       pana-min-points: ${{ fromJSON(needs.config.outputs.config).dart.pana.min-points }}
       downgrade-enabled: ${{ fromJSON(needs.config.outputs.config).dart.downgrade.enabled }}
@@ -298,8 +302,11 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     with:
       working-directory: ${{ needs.config.outputs.working-directory }}
+      pub-hosted-url: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-hosted-url }}
+      git-host: ${{ fromJSON(needs.config.outputs.config).dependencies.git-host }}
+      pub-get-args: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-get-args }}
       discovery: ${{ needs.config.outputs.discovery }}
-      affected-only: ${{ fromJSON(needs.config.outputs.config).packages.affected-only }}
+      affected-only: ${{ format('{0}', fromJSON(needs.config.outputs.config).packages.affected-only) }}
       always-all-paths: ${{ toJSON(fromJSON(needs.config.outputs.config).packages.always-all-paths) }}
       granularity: ${{ fromJSON(needs.config.outputs.config).packages.granularity }}
       shards: ${{ fromJSON(needs.config.outputs.config).packages.shards }}
@@ -322,11 +329,11 @@ jobs:
       analyze-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.analyze.enabled }}
       analyze-fatal-infos: ${{ fromJSON(needs.config.outputs.config).flutter.analyze.fatal-infos }}
       analyze-command: ${{ fromJSON(needs.config.outputs.config).flutter.analyze.command }}
-      build-runner-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.build-runner.enabled }}
+      build-runner-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).flutter.build-runner.enabled) }}
       build-runner-command: ${{ fromJSON(needs.config.outputs.config).flutter.build-runner.command }}
       verify-command: ${{ fromJSON(needs.config.outputs.config).flutter.verify.command }}
-      l10n-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.l10n.enabled }}
-      publish-dry-run-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.publish-dry-run.enabled }}
+      l10n-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).flutter.l10n.enabled) }}
+      publish-dry-run-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).flutter.publish-dry-run.enabled) }}
       test-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.test.enabled }}
       test-command: ${{ fromJSON(needs.config.outputs.config).flutter.test.command }}
       test-args: ${{ fromJSON(needs.config.outputs.config).flutter.test.args }}
@@ -338,11 +345,12 @@ jobs:
       integration-test-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.integration-test.enabled }}
       integration-test-device: ${{ fromJSON(needs.config.outputs.config).flutter.integration-test.device }}
       coverage-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.enabled }}
+      coverage-aggregate: false
       coverage-source: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.source }}
       coverage-min: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.min }}
       codecov-enabled: ${{ fromJSON(needs.config.outputs.config).flutter.coverage.codecov }}
       inspectra-enabled: ${{ fromJSON(needs.config.outputs.run).inspectra }}
-      pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.coverage }}
+      pages-part-enabled: false
 
   inspectra:
     name: Inspectra
@@ -352,13 +360,17 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     secrets:
       PUB_HOSTED_TOKEN: ${{ secrets.PUB_HOSTED_TOKEN }}
       GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
     with:
       working-directory: ${{ needs.config.outputs.working-directory }}
+      pub-hosted-url: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-hosted-url }}
+      git-host: ${{ fromJSON(needs.config.outputs.config).dependencies.git-host }}
+      pub-get-args: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-get-args }}
       discovery: ${{ needs.config.outputs.discovery }}
-      affected-only: ${{ fromJSON(needs.config.outputs.config).packages.affected-only }}
+      affected-only: ${{ format('{0}', fromJSON(needs.config.outputs.config).packages.affected-only) }}
       always-all-paths: ${{ toJSON(fromJSON(needs.config.outputs.config).packages.always-all-paths) }}
       runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
       timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.inspectra }}
@@ -373,12 +385,12 @@ jobs:
       profile: ${{ fromJSON(needs.config.outputs.config).inspectra.profile }}
       tolerate-incomplete: ${{ fromJSON(needs.config.outputs.config).inspectra.tolerate-incomplete }}
       check-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.check.enabled }}
-      check-root: ${{ fromJSON(needs.config.outputs.config).inspectra.check.root }}
+      check-root: ${{ format('{0}', fromJSON(needs.config.outputs.config).inspectra.check.root) }}
       scan-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.enabled }}
       scan-recursive: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.recursive }}
       fail-on: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.fail-on }}
       min-severity: ${{ fromJSON(needs.config.outputs.config).inspectra.scan.min-severity }}
-      sarif-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.sarif.enabled }}
+      sarif-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).inspectra.sarif.enabled) }}
       sarif-category: ${{ fromJSON(needs.config.outputs.config).inspectra.sarif.category }}
       summary-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.summary.enabled }}
       trivy-mode: ${{ fromJSON(needs.config.outputs.config).inspectra.trivy.mode }}
@@ -386,7 +398,7 @@ jobs:
       trivy-cache-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.trivy.cache }}
       offline: ${{ fromJSON(needs.config.outputs.config).inspectra.offline }}
       config-lint-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.config-lint.enabled }}
-      config-diff-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.config-diff.enabled }}
+      config-diff-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).inspectra.config-diff.enabled) }}
       report-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).inspectra.report.enabled }}
 
   writerside:
@@ -430,6 +442,8 @@ jobs:
       GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
     with:
       working-directory: ${{ needs.config.outputs.working-directory }}
+      pub-hosted-url: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-hosted-url }}
+      git-host: ${{ fromJSON(needs.config.outputs.config).dependencies.git-host }}
       discovery: ${{ needs.config.outputs.discovery }}
       publishable-only: ${{ fromJSON(needs.config.outputs.config).dartdoc.publishable-only }}
       validate-links: ${{ fromJSON(needs.config.outputs.config).dartdoc.validate-links }}
@@ -469,10 +483,12 @@ jobs:
       APP_STORE_CONNECT_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
     with:
       working-directory: ${{ needs.config.outputs.working-directory }}
+      pub-hosted-url: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-hosted-url }}
+      git-host: ${{ fromJSON(needs.config.outputs.config).dependencies.git-host }}
       discovery: ${{ needs.config.outputs.discovery }}
       apps: ${{ toJSON(fromJSON(needs.config.outputs.config).build.flutter.apps) }}
       targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.flutter.targets) }}
-      flutter-version: ${{ fromJSON(needs.config.outputs.config).flutter.versions[0] }}
+      flutter-version: ${{ fromJSON(needs.config.outputs.config).flutter.build-version }}
       flutter-version-file: ${{ fromJSON(needs.config.outputs.config).flutter.version-file }}
       build-mode: ${{ fromJSON(needs.config.outputs.config).build.flutter.build-mode }}
       flavor: ${{ fromJSON(needs.config.outputs.config).build.flutter.flavor }}
@@ -486,6 +502,8 @@ jobs:
       macos-notarize: ${{ fromJSON(needs.config.outputs.config).build.flutter.macos-notarize }}
       java-version: ${{ fromJSON(needs.config.outputs.config).build.flutter.java-version }}
       environment: ${{ fromJSON(needs.config.outputs.config).build.flutter.environment }}
+      android-signing: ${{ format('{0}', fromJSON(needs.config.outputs.config).build.flutter.android-signing) }}
+      apple-signing: ${{ format('{0}', fromJSON(needs.config.outputs.config).build.flutter.apple-signing) }}
       pages-part-enabled: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.web }}
       runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
       timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.build }}
@@ -508,6 +526,8 @@ jobs:
       GIT_DEPS_TOKEN: ${{ secrets.GIT_DEPS_TOKEN }}
     with:
       working-directory: ${{ needs.config.outputs.working-directory }}
+      pub-hosted-url: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-hosted-url }}
+      git-host: ${{ fromJSON(needs.config.outputs.config).dependencies.git-host }}
       discovery: ${{ needs.config.outputs.discovery }}
       executables: ${{ toJSON(fromJSON(needs.config.outputs.config).build.dart-compile.executables) }}
       targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.dart-compile.targets) }}
@@ -522,9 +542,84 @@ jobs:
       post-setup: ${{ fromJSON(needs.config.outputs.config).hooks.post-setup }}
       artifact-retention-days: ${{ fromJSON(needs.config.outputs.config).artifacts.retention-days }}
 
+  coverage:
+    name: Coverage
+    needs: [config, dart, flutter, inspectra]
+    if: ${{ !cancelled() && ((fromJSON(needs.config.outputs.run).dart && fromJSON(needs.config.outputs.config).dart.coverage.enabled) || (fromJSON(needs.config.outputs.run).flutter && fromJSON(needs.config.outputs.config).flutter.coverage.enabled)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+
+    env:
+      # The stricter minimum of the two toolchains that ran.
+      MINIMUM: ${{ fromJSON(needs.config.outputs.run).dart && fromJSON(needs.config.outputs.config).dart.coverage.min || 0 }}
+      FLUTTER_MINIMUM: ${{ fromJSON(needs.config.outputs.run).flutter && fromJSON(needs.config.outputs.config).flutter.coverage.min || 0 }}
+      CODECOV: ${{ (fromJSON(needs.config.outputs.run).dart && fromJSON(needs.config.outputs.config).dart.coverage.codecov) || (fromJSON(needs.config.outputs.run).flutter && fromJSON(needs.config.outputs.config).flutter.coverage.codecov) }}
+      PAGES_PART: ${{ fromJSON(needs.config.outputs.run).pages && fromJSON(needs.config.outputs.config).pages.parts.coverage }}
+
+    # The coverage of the test jobs and of Inspectra's coverage gates, merged: every package
+    # counts once, whichever job ran its tests with coverage.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the coverage
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: davils-coverage-*
+          path: ${{ runner.temp }}/davils-lcov
+          merge-multiple: true
+
+      - name: Pick the minimum
+        id: minimum
+        shell: bash
+        run: |
+          echo "value=$(( MINIMUM > FLUTTER_MINIMUM ? MINIMUM : FLUTTER_MINIMUM ))" >>"$GITHUB_OUTPUT"
+
+      - name: Collect the coverage
+        id: collect
+        uses: $/actions/coverage-collect
+        with:
+          input-directory: ${{ runner.temp }}/davils-lcov
+          output-directory: ${{ runner.temp }}/davils-coverage
+          min: ${{ steps.minimum.outputs.value }}
+          html: ${{ env.PAGES_PART }}
+
+      # Public repositories upload without a token; private ones need the secret CODECOV_TOKEN.
+      - name: Upload the coverage to Codecov
+        if: env.CODECOV == 'true' && steps.collect.outputs.percent != ''
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ${{ steps.collect.outputs.lcov }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Mark the Pages part
+        if: env.PAGES_PART == 'true' && steps.collect.outputs.percent != ''
+        shell: bash
+        env:
+          OUT: ${{ runner.temp }}/davils-coverage/html
+        run: |
+          if [[ -d "$OUT" ]]; then
+            jq -cn '{part: "coverage", id: ""}' >"$OUT/.davils-part.json"
+          fi
+
+      - name: Upload the Pages part
+        if: env.PAGES_PART == 'true' && steps.collect.outputs.percent != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: davils-pages-coverage
+          path: ${{ runner.temp }}/davils-coverage/html/
+          include-hidden-files: true
+          if-no-files-found: ignore
+
   pages:
     name: GitHub Pages
-    needs: [config, dart, flutter, inspectra, writerside, dartdoc, flutter-build]
+    needs: [config, dart, flutter, inspectra, writerside, dartdoc, flutter-build, coverage]
     if: ${{ !cancelled() && fromJSON(needs.config.outputs.run).pages && !contains(needs.*.result, 'failure') }}
     uses: $/.github/workflows/pages.yml
     permissions:
@@ -533,7 +628,7 @@ jobs:
       id-token: write
     with:
       layout: ${{ toJSON(fromJSON(needs.config.outputs.config).pages.layout) }}
-      landing-page: ${{ fromJSON(needs.config.outputs.config).pages.landing-page }}
+      landing-page: ${{ format('{0}', fromJSON(needs.config.outputs.config).pages.landing-page) }}
       cname: ${{ fromJSON(needs.config.outputs.config).pages.cname }}
       spa-fallback: ${{ fromJSON(needs.config.outputs.config).pages.spa-fallback }}
       extra-path: ${{ fromJSON(needs.config.outputs.config).pages.extra-path }}
@@ -607,25 +702,34 @@ jobs:
       APP_STORE_CONNECT_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
     with:
       working-directory: ${{ needs.config.outputs.working-directory }}
+      pub-hosted-url: ${{ fromJSON(needs.config.outputs.config).dependencies.pub-hosted-url }}
+      git-host: ${{ fromJSON(needs.config.outputs.config).dependencies.git-host }}
       discovery: ${{ needs.config.outputs.discovery }}
       tag-patterns: ${{ toJSON(fromJSON(needs.config.outputs.config).release.tag-patterns) }}
       release-branch: ${{ fromJSON(needs.config.outputs.config).release.verify.enabled && fromJSON(needs.config.outputs.config).release.verify.on-branch || '' }}
-      flutter-version: ${{ fromJSON(needs.config.outputs.config).flutter.versions[0] }}
-      inspectra-enabled: ${{ fromJSON(needs.config.outputs.config).inspectra.enabled }}
+      flutter-version: ${{ fromJSON(needs.config.outputs.config).flutter.build-version }}
+      inspectra-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).inspectra.enabled) }}
       inspectra-install: ${{ fromJSON(needs.config.outputs.config).inspectra.install }}
-      compile-enabled: ${{ fromJSON(needs.config.outputs.config).build.dart-compile.enabled }}
+      compile-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).build.dart-compile.enabled) }}
       compile-targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.dart-compile.targets) }}
-      flutter-build-enabled: ${{ fromJSON(needs.config.outputs.config).build.flutter.enabled }}
+      flutter-build-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).build.flutter.enabled) }}
       flutter-targets: ${{ toJSON(fromJSON(needs.config.outputs.config).build.flutter.targets) }}
       build-environment: ${{ fromJSON(needs.config.outputs.config).build.flutter.environment }}
-      publish-enabled: ${{ fromJSON(needs.config.outputs.config).release.pub.enabled }}
+      publish-enabled: ${{ format('{0}', fromJSON(needs.config.outputs.config).release.pub.enabled) }}
       pub-environment: ${{ fromJSON(needs.config.outputs.config).release.pub.environment }}
       wait-for-siblings: ${{ fromJSON(needs.config.outputs.config).release.pub.wait-for-siblings }}
+      wait-attempts: ${{ fromJSON(needs.config.outputs.config).release.pub.wait-attempts }}
+      wait-interval: ${{ fromJSON(needs.config.outputs.config).release.pub.wait-interval }}
       pre-publish: ${{ fromJSON(needs.config.outputs.config).hooks.pre-publish }}
       github-release-enabled: ${{ fromJSON(needs.config.outputs.config).release.github.enabled }}
       notes-source: ${{ fromJSON(needs.config.outputs.config).release.github.notes-source }}
       attest: ${{ fromJSON(needs.config.outputs.config).release.github.attest }}
       checksums: ${{ fromJSON(needs.config.outputs.config).release.github.checksums }}
+      draft: ${{ fromJSON(needs.config.outputs.config).release.github.draft }}
+      make-latest: ${{ format('{0}', fromJSON(needs.config.outputs.config).release.github.make-latest) }}
+      verify-enabled: ${{ fromJSON(needs.config.outputs.config).release.verify.enabled }}
+      android-signing: ${{ format('{0}', fromJSON(needs.config.outputs.config).build.flutter.android-signing) }}
+      apple-signing: ${{ format('{0}', fromJSON(needs.config.outputs.config).build.flutter.apple-signing) }}
       runners: ${{ toJSON(fromJSON(needs.config.outputs.config).runners) }}
       timeout-minutes: ${{ fromJSON(needs.config.outputs.config).timeouts.publish }}
       harden-runner: ${{ fromJSON(needs.config.outputs.config).security.harden-runner.enabled }}
@@ -636,7 +740,7 @@ jobs:
 
   gate:
     name: Gate
-    needs: [config, pr-lint, dart, flutter, inspectra, writerside, dartdoc, flutter-build, dart-compile, pages, test-report, release-please, release]
+    needs: [config, pr-lint, dart, flutter, inspectra, writerside, dartdoc, flutter-build, dart-compile, coverage, pages, test-report, release-please, release]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

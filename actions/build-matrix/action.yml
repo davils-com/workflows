@@ -85,6 +85,13 @@ runs:
         RUNNERS: ${{ inputs.runners }}
       run: |
         source "$ACTION_PATH/../_lib/common.sh"
+        # The lowest Flutter has to satisfy environment.sdk as well, which takes the release manifest.
+        if [[ "$TOOLCHAIN" == flutter ]] && jq -e 'index("lowest") != null' <<<"$SDKS" >/dev/null; then
+          FLUTTER_RELEASES="$(curl -fsSL https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json |
+            jq -c '[.releases[] | select(.channel == "stable" and .dart_sdk_version != null)
+                    | {version: (.version | ltrimstr("v")), dart: (.dart_sdk_version | sub(" .*$"; ""))}] | unique_by(.version)' || true)"
+          export FLUTTER_RELEASES
+        fi
         result="$(bash "$ACTION_PATH/scripts/matrix.sh")"
         set_output matrix "$(jq -c '{include}' <<<"$result")"
         set_output count "$(jq -r '.count' <<<"$result")"

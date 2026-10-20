@@ -20,9 +20,8 @@ CHOICES = {
     "packages.granularity": ["auto", "package", "workspace", "shards"],
     "dart.coverage.source": ["auto", "dart-ci", "inspectra", "none"],
     "flutter.coverage.source": ["auto", "flutter-ci", "inspectra", "none"],
-    "flutter.channel": ["stable", "beta", "main", "master"],
     "flutter.golden.os": ["ubuntu", "macos", "windows"],
-    "flutter.integration-test.device": ["auto", "linux", "chrome", "macos", "windows"],
+    "flutter.integration-test.device": ["auto", "linux", "macos", "windows"],
     "inspectra.install": ["auto", "dev-dependency", "global", "binary"],
     "inspectra.check.root": ["auto", True, False],
     "inspectra.scan.fail-on": ["critical", "high", "medium", "low", "unknown", "none"],
@@ -76,7 +75,8 @@ DESCRIPTIONS = {
     "pr": "Checks of pull requests: the title and the source branch.",
     "security": "Hardening of the runners.",
     "hooks": "Shell commands run at fixed points of every job.",
-    "runners": "Runner labels; a JSON array selects self-hosted runners.",
+    "runners": "Runner labels; a list of labels selects self-hosted runners.",
+    "dependencies": "Private package hosts and git dependencies.",
     "timeouts": "Job timeouts in minutes.",
     "artifacts": "Artifact settings.",
     "when": "When the feature runs: events (push is a branch push, tag a tag push), branch globs, path globs.",
@@ -97,6 +97,8 @@ def node(value, path):
     choices = match(path, CHOICES)
     if key == "when":
         schema = {"$ref": "#/$defs/when"}
+    elif path.startswith("runners."):
+        schema = {"anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}
     elif choices is not None:
         schema = {"$ref": "#/$defs/toggle"} if set(map(str, choices)) == {"auto", "True", "False"} else {"enum": choices}
     elif key == "enabled":

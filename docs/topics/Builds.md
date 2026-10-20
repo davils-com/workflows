@@ -76,6 +76,8 @@ of the job. Notarization needs `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_IS
 `APP_STORE_CONNECT_KEY_P8_BASE64`.
 
 Secrets stored in an environment reach the build when `build.flutter.environment` names it.
+`build.flutter.android-signing` and `apple-signing` are `auto` (sign when the secrets are there),
+`true` (fail without them) or `false` (never sign).
 
 ## Native Dart binaries
 
@@ -90,5 +92,6 @@ operating system and architecture:
 | `windows-x64`, `windows-arm64` | `windows-latest`, `windows-11-arm` |
 
 Each binary runs once with `smoke-test-args` (`--version`), is packed as `<name>-<target>.zip`
-(or `.tar.gz`) with a `.sha256` file and becomes the artifact `release-assets-<name>-<target>`,
+(or `.tar.gz`) with a `.sha256` file and becomes the artifact
+`release-assets-<package>-<name>-<target>`,
 which the GitHub release attaches together with a `checksums.txt` and provenance attestations.

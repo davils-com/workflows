@@ -82,5 +82,6 @@ All secrets are optional.
 
 ## Permissions the caller grants
 
+- `actions: read`
 - `contents: read`
 - `security-events: write`

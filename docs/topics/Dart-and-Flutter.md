@@ -39,14 +39,20 @@ The first test job of every package (first operating system, first SDK) writes
 `coverage/lcov.info`. The coverage job merges them with paths relative to the repository, writes
 the coverage per package to the job summary, fails below `coverage.min` and uploads to Codecov
 when `coverage.codecov` is on (public repositories need no token; private ones the secret
-`CODECOV_TOKEN`).
+`CODECOV_TOKEN`). In the pipeline, one coverage job merges the Dart, Flutter and Inspectra
+coverage, so every package counts once, whichever job ran its tests.
 
 Inspectra's coverage gate runs the tests itself. With `coverage.source: auto`, a package whose
 Inspectra configuration turns `coverage.enabled` on (also through `extends`) leaves its coverage
 to the Inspectra job, so its tests do not run twice. `ci` always collects here, `inspectra` never.
 
-With `pages.parts.coverage: true` the HTML report becomes `/coverage/dart/` and
-`/coverage/flutter/` of the Pages site.
+With `pages.parts.coverage: true` the HTML report becomes `/coverage/` of the Pages site
+(`/coverage/dart/` and `/coverage/flutter/` when dart-ci.yml and flutter-ci.yml are called on
+their own).
+
+`test.other-os-platforms` sets the platforms of the other operating systems, such as `[vm]` when
+Chrome and WebAssembly only run on Linux. `verify.command` runs extra checks once in the format
+and analyze job, such as checks that generated files are current.
 
 ## Test reports
 

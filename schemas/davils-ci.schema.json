@@ -32,6 +32,25 @@
       },
       "description": "Where the project lives and which branches it uses."
     },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pub-hosted-url": {
+          "type": "string",
+          "default": ""
+        },
+        "git-host": {
+          "type": "string",
+          "default": "github.com"
+        },
+        "pub-get-args": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "description": "Private package hosts and git dependencies."
+    },
     "packages": {
       "type": "object",
       "additionalProperties": false,
@@ -302,15 +321,6 @@
           "$ref": "#/$defs/toggle",
           "default": "auto"
         },
-        "channel": {
-          "enum": [
-            "stable",
-            "beta",
-            "main",
-            "master"
-          ],
-          "default": "stable"
-        },
         "versions": {
           "type": "array",
           "items": {
@@ -493,7 +503,6 @@
               "enum": [
                 "auto",
                 "linux",
-                "chrome",
                 "macos",
                 "windows"
               ],
@@ -1072,10 +1081,6 @@
               ],
               "default": "zip"
             },
-            "checksums": {
-              "type": "boolean",
-              "default": true
-            },
             "smoke-test-args": {
               "type": "string",
               "default": "--version"
@@ -1350,31 +1355,91 @@
       "additionalProperties": false,
       "properties": {
         "linux": {
-          "type": "string",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
           "default": "ubuntu-latest"
         },
         "linux-arm": {
-          "type": "string",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
           "default": "ubuntu-24.04-arm"
         },
         "macos": {
-          "type": "string",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
           "default": "macos-latest"
         },
         "macos-intel": {
-          "type": "string",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
           "default": "macos-15-intel"
         },
         "windows": {
-          "type": "string",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
           "default": "windows-latest"
         },
         "windows-arm": {
-          "type": "string",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
           "default": "windows-11-arm"
         }
       },
-      "description": "Runner labels; a JSON array selects self-hosted runners."
+      "description": "Runner labels; a list of labels selects self-hosted runners."
     },
     "timeouts": {
       "type": "object",
@@ -1406,12 +1471,6 @@
           "type": "integer",
           "minimum": 0,
           "default": 45
-        },
-        "release": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Releases: verification, pub.dev, GitHub releases, release-please.",
-          "default": 20
         }
       },
       "description": "Job timeouts in minutes."

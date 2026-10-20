@@ -8,10 +8,10 @@ name: Test report
 on:
   workflow_call:
     inputs:
-      artifact-pattern:
-        description: Pattern of the report artifacts.
+      artifact-prefix:
+        description: Prefix of the report artifacts; dart-ci.yml uploads <prefix>-<toolchain>-*.
         type: string
-        default: davils-test-reports-*
+        default: davils-test-reports
       name:
         description: Name of the check run.
         type: string
@@ -30,7 +30,7 @@ permissions: {}
 jobs:
   report:
     name: Test report
-    if: ${{ !github.event.pull_request.head.repo.fork }}
+    if: ${{ github.event.pull_request.head.repo.full_name == '' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
     timeout-minutes: 10
 
@@ -52,7 +52,7 @@ jobs:
       - name: Download the reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: davils-test-reports-${{ matrix.toolchain }}-*
+          pattern: ${{ inputs.artifact-prefix }}-${{ matrix.toolchain }}-*
           path: ${{ runner.temp }}/davils-reports
 
       - name: Look for reports

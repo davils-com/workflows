@@ -21,7 +21,7 @@ jobs:
 
 | Input | Type | Default | Description |
 |---|---|---|---|
-| `artifact-pattern` | string | `davils-test-reports-*` | Pattern of the report artifacts. |
+| `artifact-prefix` | string | `davils-test-reports` | Prefix of the report artifacts; dart-ci.yml uploads <prefix>-<toolchain>-*. |
 | `name` | string | `Tests` | Name of the check run. |
 | `reporter` | string | `auto` | dart-json or flutter-json; auto picks it from the artifact names. |
 | `runners` | string | `{}` | JSON object of runner labels. |

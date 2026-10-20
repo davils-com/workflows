@@ -14,6 +14,9 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `project.working-directory` | `.` | string |
 | `project.release-branch` | `main` | string |
 | `project.integration-branch` | `develop` | string |
+| `dependencies.pub-hosted-url` | empty | string |
+| `dependencies.git-host` | `github.com` | string |
+| `dependencies.pub-get-args` | empty | string |
 | `packages.include` | `[]` | list of string |
 | `packages.exclude` | `[]` | list of string |
 | `packages.external-path-dependencies` | `error` | `error`, `warn` |
@@ -49,7 +52,6 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `dart.downgrade.enabled` | `false` | `true`, `false`, `auto` |
 | `dart.when` |  | events, branches, paths |
 | `flutter.enabled` | `auto` | `true`, `false`, `auto` |
-| `flutter.channel` | `stable` | `stable`, `beta`, `main`, `master` |
 | `flutter.versions` | `["stable"]` | list of string |
 | `flutter.version-file` | empty | string |
 | `flutter.os` | `["ubuntu"]` | list of `ubuntu`, `ubuntu-arm`, `macos`, `windows`, `windows-arm` |
@@ -75,7 +77,7 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `flutter.golden.os` | `macos` | `ubuntu`, `macos`, `windows` |
 | `flutter.golden.tags` | `golden` | string |
 | `flutter.integration-test.enabled` | `false` | `true`, `false`, `auto` |
-| `flutter.integration-test.device` | `auto` | `auto`, `linux`, `chrome`, `macos`, `windows` |
+| `flutter.integration-test.device` | `auto` | `auto`, `linux`, `macos`, `windows` |
 | `flutter.l10n.enabled` | `auto` | `true`, `false`, `auto` |
 | `flutter.when` |  | events, branches, paths |
 | `inspectra.enabled` | `auto` | `true`, `false`, `auto` |
@@ -168,7 +170,6 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `build.dart-compile.executables` | `[]` | list of object |
 | `build.dart-compile.targets` | `["linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "windows-x64"]` | list of `linux-x64`, `linux-arm64`, `macos-arm64`, `macos-x64`, `windows-x64`, `windows-arm64` |
 | `build.dart-compile.archive` | `zip` | `zip`, `tar.gz` |
-| `build.dart-compile.checksums` | `true` | boolean |
 | `build.dart-compile.smoke-test-args` | `--version` | string |
 | `build.dart-compile.when` |  | events, branches, paths |
 | `release.mode` | `auto` | `auto`, `none`, `tag`, `release-please` |
@@ -208,18 +209,17 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `hooks.pre-test` | empty | string |
 | `hooks.post-test` | empty | string |
 | `hooks.pre-publish` | empty | string |
-| `runners.linux` | `ubuntu-latest` | string |
-| `runners.linux-arm` | `ubuntu-24.04-arm` | string |
-| `runners.macos` | `macos-latest` | string |
-| `runners.macos-intel` | `macos-15-intel` | string |
-| `runners.windows` | `windows-latest` | string |
-| `runners.windows-arm` | `windows-11-arm` | string |
+| `runners.linux` | `ubuntu-latest` |  |
+| `runners.linux-arm` | `ubuntu-24.04-arm` |  |
+| `runners.macos` | `macos-latest` |  |
+| `runners.macos-intel` | `macos-15-intel` |  |
+| `runners.windows` | `windows-latest` |  |
+| `runners.windows-arm` | `windows-11-arm` |  |
 | `timeouts.ci` | `45` | integer |
 | `timeouts.inspectra` | `30` | integer |
 | `timeouts.docs` | `20` | integer |
 | `timeouts.build` | `60` | integer |
 | `timeouts.publish` | `45` | integer |
-| `timeouts.release` | `20` | integer |
 | `artifacts.retention-days` | `7` | integer |
 
 ## The defaults file
@@ -242,6 +242,13 @@ project:
   working-directory: .
   release-branch: main
   integration-branch: develop
+
+# Private dependencies: a private package host (its token is the secret PUB_HOSTED_TOKEN), the
+# host of private git dependencies (secret GIT_DEPS_TOKEN) and extra arguments for pub get.
+dependencies:
+  pub-hosted-url: ''
+  git-host: github.com
+  pub-get-args: ''
 
 packages:
   include: []
@@ -304,7 +311,6 @@ dart:
 
 flutter:
   enabled: auto
-  channel: stable
   versions: [stable]
   version-file: ''
   os: [ubuntu]
@@ -476,7 +482,6 @@ build:
     executables: []
     targets: [linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64]
     archive: zip
-    checksums: true
     smoke-test-args: --version
     when:
       events: [push, workflow_dispatch]
@@ -553,7 +558,6 @@ timeouts:
   docs: 20
   build: 60
   publish: 45
-  release: 20
 
 artifacts:
   retention-days: 7

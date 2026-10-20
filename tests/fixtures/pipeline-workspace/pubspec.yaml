@@ -1,0 +1,11 @@
+name: davils_ci_pipe_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+
+workspace:
+  - packages/*
+
+dev_dependencies:
+  test: ^1.26.0

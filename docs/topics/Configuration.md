@@ -96,6 +96,18 @@ hooks:
 Every check also has a `command` that replaces it, such as `dart.analyze.command` or
 `dart.test.command` (run in each package directory with `PACKAGE_NAME` and `PACKAGE_PATH`).
 
+## Private dependencies
+
+```yaml
+dependencies:
+  pub-hosted-url: https://pub.example.com
+  git-host: gitlab.example.com
+  pub-get-args: --enforce-lockfile
+```
+
+The tokens are the secrets `PUB_HOSTED_TOKEN` (the package host) and `GIT_DEPS_TOKEN` (git
+dependencies over HTTPS and SSH URLs of that host).
+
 ## Runners and timeouts
 
 ```yaml
@@ -112,6 +124,5 @@ timeouts:
   build: 60
 ```
 
-A runner can be a JSON array of labels for self-hosted runners:
-`linux: '["self-hosted", "linux", "x64"]'`. Self-hosted runners need runner 2.336.0 or newer for
+A runner can be a list of labels for self-hosted runners: `linux: [self-hosted, linux, x64]`. Self-hosted runners need runner 2.336.0 or newer for
 the self-repository syntax the workflows use.

@@ -69,10 +69,11 @@ jobs:
 | `golden-os` | string | `macos` | Operating system of the golden tests. |
 | `golden-tags` | string | `golden` | Tag of the golden tests; the regular test jobs skip it when golden-enabled. |
 | `integration-test-enabled` | boolean | `false` | Flutter only. Run integration_test/ on a desktop device. |
-| `integration-test-device` | string | `auto` | auto (linux with a virtual display), linux, macos or windows. |
+| `integration-test-device` | string | `auto` | auto (linux with a virtual display), linux, macos or windows; Flutter runs integration tests on desktop devices only. |
 | `coverage-enabled` | boolean | `true` | Collect coverage in the first test job of every package. |
 | `coverage-source` | string | `auto` | auto (leave packages whose Inspectra coverage gate is on to Inspectra), ci (always here), inspectra or none. |
 | `inspectra-enabled` | boolean | `false` | true when the inspectra workflow runs in the same pipeline (for coverage-source auto). |
+| `coverage-aggregate` | boolean | `true` | Merge the coverage of the test jobs in a coverage job here (minimum, Codecov, Pages part); pipeline.yml merges it itself, together with Inspectra's. |
 | `coverage-min` | number | `0` | Minimum total line coverage in percent; 0 disables the check. |
 | `codecov-enabled` | boolean | `false` | Upload the coverage to Codecov; private repositories need the secret CODECOV_TOKEN. |
 | `pages-part-enabled` | boolean | `false` | Upload the HTML coverage report as a part of the GitHub Pages site (pages.yml). |

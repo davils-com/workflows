@@ -75,3 +75,9 @@ matrix() {
   SELECT=apps run matrix
   [ "$(jq -c '[.packages[].name]' <<<"$output")" = '["davils_ci_demo"]' ]
 }
+
+@test "the lowest Flutter also satisfies the Dart lower bound" {
+  TOOLCHAIN=flutter SDKS='["lowest"]' \
+    FLUTTER_RELEASES='[{"version":"3.38.0","dart":"3.10.0"},{"version":"3.41.2","dart":"3.13.5"},{"version":"3.47.7","dart":"3.13.5"}]' run matrix
+  [ "$(jq -r '.include[0].sdk' <<<"$output")" = 3.41.2 ]
+}

@@ -170,3 +170,44 @@ evaluate() {
   [ "$(jq -r '.run["pr-lint"]' <<<"$output")" = false ]
   [ "$(jq -r '.config.pr.title.enabled' <<<"$output")" = false ]
 }
+
+@test "a run started on a tag is a release" {
+  cd "$FIXTURES/dart-single"
+  config="$(merge)"
+  discovery="$(run_script "$ACTIONS/discover-packages/scripts/discover.sh")"
+  EVENT_NAME=workflow_dispatch REF=refs/tags/v1.2.3 REF_NAME=v1.2.3 run evaluate "$config" "$discovery"
+  [ "$(jq -r '.run["release-tag"]' <<<"$output")" = true ]
+  [ "$(jq -r '.event.raw' <<<"$output")" = workflow_dispatch ]
+}
+
+@test "boolean options take yes, on and auto" {
+  cd "$FIXTURES/dart-single"
+  config="$(CONFIG_INLINE='{"dart": {"test": {"report": "yes"}, "analyze": {"fatal-infos": "auto"}}, "pages": {"deploy": "off"}}' merge)"
+  discovery="$(run_script "$ACTIONS/discover-packages/scripts/discover.sh")"
+  EVENT_NAME=push REF=refs/heads/main REF_NAME=main run evaluate "$config" "$discovery"
+  [ "$(jq -c '[.config.dart.test.report, .config.dart.analyze["fatal-infos"], .config.pages.deploy]' <<<"$output")" = '[true,true,false]' ]
+}
+
+@test "runner labels can be lists" {
+  cd "$FIXTURES/dart-single"
+  config="$(CONFIG_INLINE='{"runners": {"linux": ["self-hosted", "linux"], "macos": "[\"self-hosted\",\"macOS\"]"}}' merge)"
+  discovery="$(run_script "$ACTIONS/discover-packages/scripts/discover.sh")"
+  EVENT_NAME=push REF=refs/heads/main REF_NAME=main run evaluate "$config" "$discovery"
+  [ "$(jq -c '.config.runners.linux, .config.runners.macos' <<<"$output" | paste -sd' ' -)" = '["self-hosted","linux"] ["self-hosted","macOS"]' ]
+}
+
+@test "the root check needs an Inspectra configuration at the root" {
+  cd "$FIXTURES/dart-workspace"
+  config="$(merge)"
+  discovery="$(run_script "$ACTIONS/discover-packages/scripts/discover.sh")"
+  EVENT_NAME=push REF=refs/heads/main REF_NAME=main run evaluate "$config" "$discovery"
+  [ "$(jq -r '.config.inspectra.check.root' <<<"$output")" = false ]
+}
+
+@test "builds use the first Flutter version that is not lowest" {
+  cd "$FIXTURES/dart-workspace"
+  config="$(CONFIG_INLINE='flutter: {versions: [lowest, beta]}' merge)"
+  discovery="$(run_script "$ACTIONS/discover-packages/scripts/discover.sh")"
+  EVENT_NAME=push REF=refs/heads/main REF_NAME=main run evaluate "$config" "$discovery"
+  [ "$(jq -r '.config.flutter["build-version"]' <<<"$output")" = beta ]
+}

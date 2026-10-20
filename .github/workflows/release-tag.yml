@@ -108,6 +108,14 @@ on:
         description: Wait until the sibling packages are on pub.dev.
         type: boolean
         default: true
+      wait-attempts:
+        description: How often to ask pub.dev for a sibling.
+        type: number
+        default: 60
+      wait-interval:
+        description: Seconds between two attempts.
+        type: number
+        default: 30
       pre-publish:
         description: Shell commands run in the package directory right before the publication.
         type: string
@@ -139,6 +147,22 @@ on:
         default: ''
       release-mode:
         description: auto, create or update (see github-release.yml).
+        type: string
+        default: auto
+      draft:
+        description: Create the GitHub release as a draft.
+        type: boolean
+        default: false
+      make-latest:
+        description: auto, true or false (see github-release.yml).
+        type: string
+        default: auto
+      android-signing:
+        description: auto, true or false (see flutter-build.yml).
+        type: string
+        default: auto
+      apple-signing:
+        description: auto, true or false (see flutter-build.yml).
         type: string
         default: auto
 
@@ -473,6 +497,8 @@ jobs:
       build-name: version
       version: ${{ needs.parse.outputs.version }}
       environment: ${{ inputs.build-environment }}
+      android-signing: ${{ inputs.android-signing }}
+      apple-signing: ${{ inputs.apple-signing }}
       release-assets: true
       runners: ${{ inputs.runners }}
       harden-runner: ${{ inputs.harden-runner }}
@@ -500,6 +526,8 @@ jobs:
       environment: ${{ inputs.pub-environment }}
       dry-run: ${{ inputs.dry-run }}
       wait-for-siblings: ${{ inputs.wait-for-siblings }}
+      wait-attempts: ${{ inputs.wait-attempts }}
+      wait-interval: ${{ inputs.wait-interval }}
       sdk: ${{ inputs.sdk }}
       flutter-version: ${{ inputs.flutter-version }}
       pre-publish: ${{ inputs.pre-publish }}
@@ -531,6 +559,8 @@ jobs:
       checksums: ${{ inputs.checksums }}
       latest-package: ${{ inputs.latest-package }}
       mode: ${{ inputs.release-mode }}
+      draft: ${{ inputs.draft }}
+      make-latest: ${{ inputs.make-latest }}
       sdk: ${{ inputs.sdk }}
       runners: ${{ inputs.runners }}
       harden-runner: ${{ inputs.harden-runner }}

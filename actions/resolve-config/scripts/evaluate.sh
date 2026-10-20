@@ -26,7 +26,9 @@ AFFECTED="${AFFECTED:-}"
 
 event="${EVENT_NAME:-push}"
 ref="${REF:-}"
-if [[ "$event" == push && "$ref" == refs/tags/* ]]; then
+# A tag pushed, or a run started on a tag (release-please's dispatch with token-source
+# github-token), is a release.
+if [[ ("$event" == push || "$event" == workflow_dispatch) && "$ref" == refs/tags/* ]]; then
   event=tag
 fi
 case "$event" in
@@ -71,6 +73,7 @@ jq -cn -L "$LIB_DIR" \
   --arg branch "$branch" \
   --arg ref_name "${REF_NAME:-}" \
   --arg is_fork "${IS_FORK:-false}" \
+  --argjson defaults "$(yaml_to_json "$here/../defaults.yaml")" \
   '
   include "lib";
   $discovery.summary as $s
@@ -145,7 +148,7 @@ jq -cn -L "$LIB_DIR" \
         | .build.flutter["resolved-targets"] = $targets
         | .build["dart-compile"].enabled = $dart_compile
         | .release.mode = $release_mode
-        | .inspectra.check.root = (.inspectra.check.root | resolve($discovery.workspace.enabled))
+        | .inspectra.check.root = (.inspectra.check.root | resolve($discovery.workspace.enabled and $discovery.workspace.inspectra))
         | .inspectra.sarif.enabled = (.inspectra.sarif.enabled | resolve($is_fork != "true"))
         | .inspectra["config-diff"].enabled = (.inspectra["config-diff"].enabled | resolve($event == "pull_request"))
         | .inspectra.report.enabled = (.inspectra.report.enabled | resolve($inspectra_part))
@@ -159,6 +162,15 @@ jq -cn -L "$LIB_DIR" \
         # Every other toggle that is still auto or a string: on unless it says false, so typed
         # boolean inputs of the workflows receive true or false.
         | walk(if type == "object" and has("enabled") and ((.enabled | type) == "string") then .enabled |= resolve(true) else . end)
+        # Every option whose default is a boolean becomes one: yes, on and the like become true,
+        # auto becomes the default.
+        | reduce ($defaults | paths(type == "boolean")) as $p (.;
+            (getpath($p)) as $v
+            | if ($v | type) == "string" then setpath($p; ($v | resolve($defaults | getpath($p)))) else . end)
+        # Runner labels: a list (or a JSON list in a string) selects self-hosted runners.
+        | .runners |= map_values(if type == "string" and startswith("[") then fromjson else . end)
+        # The Flutter version of builds and releases: the first of flutter.versions that is not lowest.
+        | .flutter["build-version"] = ([.flutter.versions[] | select(. != "lowest")] | first // "stable")
       )
     }
   '

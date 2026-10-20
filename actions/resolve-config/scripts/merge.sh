@@ -81,6 +81,7 @@ if [[ "${VALIDATE:-true}" == true ]]; then
         else "\($p): expected a number, found \($c | tojson)" end
       elif ($d | type) == "string" then
         if ($c | type) == "string" or ($c | type) == "number" or ($c | type) == "boolean" then empty
+        elif ($p | startswith("runners.")) and ($c | type) == "array" then empty
         else "\($p): expected a string, found \($c | type)" end
       else empty end;
     walkcheck($d; .; "")

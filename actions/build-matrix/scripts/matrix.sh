@@ -21,6 +21,8 @@
 #   SHARDS           number of shards (default 8)
 #   SHARD_THRESHOLD  package count from which auto shards (default 20)
 #   RUNNERS          JSON object: linux, linux-arm, macos, windows, windows-arm runner labels
+#   FLUTTER_RELEASES JSON array of stable Flutter releases ({version, dart}); with it, lowest is the
+#                    oldest Flutter that satisfies environment.flutter and environment.sdk
 #
 # Prints {"include": [...], "count": n, "granularity": "...", "packages": [...every selected package...]}.
 set -euo pipefail
@@ -32,6 +34,8 @@ DISCOVERY="${DISCOVERY:?DISCOVERY is required}"
 AFFECTED="${AFFECTED:-}"
 [[ -z "$AFFECTED" ]] && AFFECTED="$(jq -c '{mode: "all", paths: [.packages[].path]}' <<<"$DISCOVERY")"
 
+releases="${FLUTTER_RELEASES:-}"
+[[ -z "$releases" ]] && releases='null'
 runners="${RUNNERS:-}"
 [[ -z "$runners" ]] && runners='{}'
 sdks="${SDKS:-}"
@@ -51,6 +55,7 @@ jq -cn \
   --argjson shards "${SHARDS:-8}" \
   --argjson threshold "${SHARD_THRESHOLD:-20}" \
   --argjson runners "$runners" \
+  --argjson releases "$releases" \
   '
   def semver_key: sub("[-+].*$"; "") | split(".") | map(tonumber? // 0);
 
@@ -68,7 +73,16 @@ jq -cn \
   def version_for($sdk; $pkgs):
     if $sdk != "lowest" then $sdk
     elif $toolchain == "flutter" then
-      ([$pkgs[].flutter_lower, $discovery.workspace.flutter_lower] | map(select(. != null)) | max_by(semver_key))
+      ([$pkgs[].flutter_lower, $discovery.workspace.flutter_lower] | map(select(. != null)) | max_by(semver_key)) as $flutter
+      | ([$pkgs[].sdk_lower, $discovery.workspace.sdk_lower] | map(select(. != null)) | max_by(semver_key)) as $dart
+      # The oldest stable Flutter that satisfies both lower bounds: a Flutter version whose Dart is
+      # older than the environment.sdk constraint cannot resolve the package.
+      | if $releases == null or ($flutter == null and $dart == null) then $flutter
+        else ([ $releases[]
+                | select($flutter == null or (.version | semver_key) >= ($flutter | semver_key))
+                | select($dart == null or (.dart | semver_key) >= ($dart | semver_key)) ]
+              | sort_by(.version | semver_key) | first | .version) // $flutter
+        end
     else
       ([$pkgs[].sdk_lower, $discovery.workspace.sdk_lower] | map(select(. != null)) | max_by(semver_key))
     end;

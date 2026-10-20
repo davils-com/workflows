@@ -45,7 +45,7 @@ pages:
 | `docs` | writerside.yml | the instance id |
 | `api` | dartdoc.yml | `api` |
 | `web` | flutter-build.yml | the app's package name |
-| `coverage` | dart-ci.yml, flutter-ci.yml (`pages.parts.coverage`) | `dart`, `flutter` |
+| `coverage` | the coverage job of pipeline.yml, or dart-ci.yml and flutter-ci.yml (`pages.parts.coverage`) | empty, or `dart` and `flutter` |
 | `inspectra` | inspectra.yml (`pages.parts.inspectra`) | `report` |
 
 - Two parts writing the same file fail the run; a part may sit inside another (`docs` at `/` and

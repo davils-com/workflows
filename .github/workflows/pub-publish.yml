@@ -228,16 +228,16 @@ jobs:
             echo "exists=false" >>"$GITHUB_OUTPUT"
           fi
 
-      # With the id-token permission, setup-dart registers the OpenID Connect token of this job
-      # for pub.dev. It has to run in this job; Flutter's pub reads the same token.
-      - name: Set up Dart
-        if: steps.existing.outputs.exists != 'true'
-        uses: $/actions/setup-dart-env
+      # The siblings first: the OpenID Connect token that setup-dart registers below expires
+      # minutes after it is issued, and the wait can take longer.
+      - name: Wait for the siblings on pub.dev
+        if: steps.existing.outputs.exists != 'true' && inputs.wait-for-siblings && !inputs.dry-run
+        uses: $/actions/wait-for-pub-dev
         with:
-          sdk: ${{ inputs.sdk }}
-          working-directory: ${{ inputs.working-directory }}
-          resolve: ${{ env.TOOLCHAIN == 'dart' }}
-          packages: '[${{ toJSON(fromJSON(needs.verify.outputs.release)) }}]'
+          package-path: ${{ env.PACKAGE_DIR }}
+          siblings: ${{ needs.verify.outputs.siblings }}
+          attempts: ${{ inputs.wait-attempts }}
+          interval: ${{ inputs.wait-interval }}
 
       - name: Set up Flutter
         if: steps.existing.outputs.exists != 'true' && env.TOOLCHAIN == 'flutter'
@@ -247,14 +247,16 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           packages: '[${{ toJSON(fromJSON(needs.verify.outputs.release)) }}]'
 
-      - name: Wait for the siblings on pub.dev
-        if: steps.existing.outputs.exists != 'true' && inputs.wait-for-siblings && !inputs.dry-run
-        uses: $/actions/wait-for-pub-dev
+      # With the id-token permission, setup-dart registers the OpenID Connect token of this job
+      # for pub.dev, right before it is used. Flutter's pub reads the same token.
+      - name: Set up Dart
+        if: steps.existing.outputs.exists != 'true'
+        uses: $/actions/setup-dart-env
         with:
-          package-path: ${{ env.PACKAGE_DIR }}
-          siblings: ${{ needs.verify.outputs.siblings }}
-          attempts: ${{ inputs.wait-attempts }}
-          interval: ${{ inputs.wait-interval }}
+          sdk: ${{ inputs.sdk }}
+          working-directory: ${{ inputs.working-directory }}
+          resolve: ${{ env.TOOLCHAIN == 'dart' }}
+          packages: '[${{ toJSON(fromJSON(needs.verify.outputs.release)) }}]'
 
       - name: Run the pre-publish hook
         if: steps.existing.outputs.exists != 'true'

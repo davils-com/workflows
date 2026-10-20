@@ -435,12 +435,14 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
+    # actions: read lets upload-sarif read the run in private repositories.
     permissions:
       contents: read
       security-events: write
+      actions: read
 
     env:
-      SARIF: ${{ contains(fromJSON('["true","on","yes"]'), inputs.sarif-enabled) || (!contains(fromJSON('["false","off","no"]'), inputs.sarif-enabled) && !github.event.pull_request.head.repo.fork) }}
+      SARIF: ${{ contains(fromJSON('["true","on","yes"]'), inputs.sarif-enabled) || (!contains(fromJSON('["false","off","no"]'), inputs.sarif-enabled) && (github.event.pull_request.head.repo.full_name == '' || github.event.pull_request.head.repo.full_name == github.repository)) }}
 
     steps:
       - name: Harden the runner

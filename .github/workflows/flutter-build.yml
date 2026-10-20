@@ -10,7 +10,7 @@ name: Flutter build
 #   windows-x64     windows   windows-arm64 on an ARM runner
 #
 # Every build is an artifact flutter-<app>-<target>; with release-assets it is also an artifact
-# release-assets-<app>-<target> that github-release.yml attaches to the release.
+# release-assets-flutter-<app>-<target> that github-release.yml attaches to the release.
 #
 # Signing secrets that live in an environment only reach the build when `environment` names it.
 
@@ -93,6 +93,14 @@ on:
         description: Build one APK per ABI.
         type: boolean
         default: false
+      android-signing:
+        description: auto or true (sign when the ANDROID_* secrets are set; true fails without them) or false (never sign).
+        type: string
+        default: auto
+      apple-signing:
+        description: auto or true (sign when the APPLE_* secrets are set; true fails without them) or false (never sign).
+        type: string
+        default: auto
       export-options-plist:
         description: ExportOptions.plist for a signed ipa, relative to the app.
         type: string
@@ -114,7 +122,7 @@ on:
         type: string
         default: ''
       release-assets:
-        description: Also upload every build as release-assets-<app>-<target> for github-release.yml.
+        description: Also upload every build as release-assets-flutter-<app>-<target> for github-release.yml.
         type: boolean
         default: false
       pages-part-enabled:
@@ -266,8 +274,10 @@ jobs:
     env:
       APP_DIR: ${{ inputs.working-directory }}/${{ matrix.path }}
       TARGET: ${{ matrix.target }}
-      HAS_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-      HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+      HAS_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && !contains(fromJSON('["false","off","no"]'), inputs.android-signing) }}
+      HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' && !contains(fromJSON('["false","off","no"]'), inputs.apple-signing) }}
+      REQUIRE_ANDROID_SIGNING: ${{ contains(fromJSON('["true","on","yes"]'), inputs.android-signing) }}
+      REQUIRE_APPLE_SIGNING: ${{ contains(fromJSON('["true","on","yes"]'), inputs.apple-signing) }}
 
     steps:
       - name: Harden the runner
@@ -310,6 +320,20 @@ jobs:
           git-token: ${{ secrets.GIT_DEPS_TOKEN }}
           git-host: ${{ inputs.git-host }}
           post-setup: ${{ inputs.post-setup }}
+
+      - name: Check the signing secrets
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          if [[ "$PLATFORM" == android && "$REQUIRE_ANDROID_SIGNING" == true && "$HAS_ANDROID_KEYSTORE" != true ]]; then
+            echo "::error::android-signing is true, but the secret ANDROID_KEYSTORE_BASE64 is not set."
+            exit 1
+          fi
+          if [[ ("$PLATFORM" == ios || "$PLATFORM" == macos) && "$REQUIRE_APPLE_SIGNING" == true && "$HAS_APPLE_CERTIFICATE" != true ]]; then
+            echo "::error::apple-signing is true, but the secret APPLE_CERTIFICATE_P12_BASE64 is not set."
+            exit 1
+          fi
 
       - name: Sign Android builds
         if: matrix.platform == 'android' && env.HAS_ANDROID_KEYSTORE == 'true'
@@ -427,7 +451,12 @@ jobs:
               ;;
           esac
           echo "directory=$out" >>"$GITHUB_OUTPUT"
-          [[ -d build/davils-symbols ]] && echo "symbols=$PWD/build/davils-symbols" >>"$GITHUB_OUTPUT"
+          if [[ -d build/davils-symbols ]]; then
+            # upload-artifact on Windows needs a Windows path, not Git Bash's /d/a/...
+            symbols="$PWD/build/davils-symbols"
+            [[ "$RUNNER_OS" == Windows ]] && symbols="$(cygpath -w "$symbols")"
+            echo "symbols=$symbols" >>"$GITHUB_OUTPUT"
+          fi
           ls -la "$out"
 
       - name: Notarize the macOS app
@@ -489,7 +518,7 @@ jobs:
         if: inputs.release-assets && matrix.target != 'web'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-assets-${{ matrix.app }}-${{ matrix.target }}
+          name: release-assets-flutter-${{ matrix.app }}-${{ matrix.target }}
           path: ${{ steps.build.outputs.directory }}/
           retention-days: ${{ inputs.artifact-retention-days }}
 

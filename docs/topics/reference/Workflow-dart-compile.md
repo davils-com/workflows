@@ -8,7 +8,7 @@
 Compiles the executables of Dart packages to native binaries for every target, each on a runner
 of its own operating system and architecture, smoke tests them and packages them as
 <name>-<target>.zip (or .tar.gz) with a .sha256 file. Every archive is an artifact
-release-assets-<name>-<target> that github-release.yml attaches to the release.
+release-assets-<package>-<name>-<target> that github-release.yml attaches to the release.
 ```
 
 ```yaml

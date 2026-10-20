@@ -16,6 +16,13 @@ project:
   release-branch: main
   integration-branch: develop
 
+# Private dependencies: a private package host (its token is the secret PUB_HOSTED_TOKEN), the
+# host of private git dependencies (secret GIT_DEPS_TOKEN) and extra arguments for pub get.
+dependencies:
+  pub-hosted-url: ''
+  git-host: github.com
+  pub-get-args: ''
+
 packages:
   include: []
   exclude: []
@@ -77,7 +84,6 @@ dart:
 
 flutter:
   enabled: auto
-  channel: stable
   versions: [stable]
   version-file: ''
   os: [ubuntu]
@@ -249,7 +255,6 @@ build:
     executables: []
     targets: [linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64]
     archive: zip
-    checksums: true
     smoke-test-args: --version
     when:
       events: [push, workflow_dispatch]
@@ -326,7 +331,6 @@ timeouts:
   docs: 20
   build: 60
   publish: 45
-  release: 20
 
 artifacts:
   retention-days: 7

@@ -52,6 +52,8 @@ jobs:
 | `pub-environment` | string | `pub.dev` | GitHub environment of the pub.dev publication, as named in the pub.dev settings. |
 | `dry-run` | boolean | `false` | Run everything but publish nothing to pub.dev and create no release. |
 | `wait-for-siblings` | boolean | `true` | Wait until the sibling packages are on pub.dev. |
+| `wait-attempts` | number | `60` | How often to ask pub.dev for a sibling. |
+| `wait-interval` | number | `30` | Seconds between two attempts. |
 | `pre-publish` | string | empty | Shell commands run in the package directory right before the publication. |
 | `github-release-enabled` | boolean | `true` | Create the GitHub release. |
 | `notes-source` | string | `auto` | auto, inspectra, changelog, file, generate or keep (see github-release.yml). |
@@ -60,6 +62,10 @@ jobs:
 | `checksums` | boolean | `true` | Attach a checksums.txt. |
 | `latest-package` | string | empty | In a workspace, the package whose releases become the latest release. |
 | `release-mode` | string | `auto` | auto, create or update (see github-release.yml). |
+| `draft` | boolean | `false` | Create the GitHub release as a draft. |
+| `make-latest` | string | `auto` | auto, true or false (see github-release.yml). |
+| `android-signing` | string | `auto` | auto, true or false (see flutter-build.yml). |
+| `apple-signing` | string | `auto` | auto, true or false (see flutter-build.yml). |
 | `runners` | string | `{}` | JSON object of runner labels. |
 | `timeout-minutes` | number | `45` | Timeout of the verification. |
 | `harden-runner` | boolean | `true` | Run step-security/harden-runner first on Linux runners. |

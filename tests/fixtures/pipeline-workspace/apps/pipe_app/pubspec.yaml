@@ -1,0 +1,16 @@
+name: davils_ci_pipe_app
+description: A Flutter web app outside the workspace fixture of davils-com/workflows.
+version: 1.0.0+1
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

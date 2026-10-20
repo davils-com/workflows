@@ -109,7 +109,10 @@ for path in "${candidates[@]}"; do
   # A package path dependency that leaves the repository cannot resolve on a runner.
   while IFS= read -r dep_path; do
     [[ -z "$dep_path" ]] && continue
-    target="$(cd "$path" && cd "$dep_path" 2>/dev/null && pwd -P || true)"
+    target=''
+    if resolved="$(cd "$path" && cd "$dep_path" 2>/dev/null && pwd -P)"; then
+      target="$resolved"
+    fi
     if [[ -z "$target" || "$target" != "$repo_top"* ]]; then
       message="$path/pubspec.yaml depends on '$dep_path' by path, outside the repository. The reusable workflows only check out this repository; publish that dependency or use a git dependency."
       if [[ "${EXTERNAL_PATH_DEPS:-error}" == warn ]]; then warn "$message"; else die "$message"; fi

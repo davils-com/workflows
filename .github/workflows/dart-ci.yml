@@ -220,7 +220,7 @@ on:
         type: boolean
         default: false
       integration-test-device:
-        description: auto (linux with a virtual display), linux, macos or windows.
+        description: auto (linux with a virtual display), linux, macos or windows; Flutter runs integration tests on desktop devices only.
         type: string
         default: auto
 
@@ -237,6 +237,10 @@ on:
         description: true when the inspectra workflow runs in the same pipeline (for coverage-source auto).
         type: boolean
         default: false
+      coverage-aggregate:
+        description: Merge the coverage of the test jobs in a coverage job here (minimum, Codecov, Pages part); pipeline.yml merges it itself, together with Inspectra's.
+        type: boolean
+        default: true
       coverage-min:
         description: Minimum total line coverage in percent; 0 disables the check.
         type: number
@@ -649,7 +653,7 @@ jobs:
           platforms: ${{ (!matrix.first_os && inputs.test-platforms-other-os) || inputs.test-platforms }}
           command: ${{ inputs.test-command }}
           args: ${{ inputs.test-args }}
-          exclude-tags: ${{ inputs.golden-enabled && inputs.golden-tags || inputs.test-exclude-tags }}
+          exclude-tags: ${{ (inputs.golden-enabled && inputs.test-exclude-tags != '' && format('{0},{1}', inputs.golden-tags, inputs.test-exclude-tags)) || (inputs.golden-enabled && inputs.golden-tags) || inputs.test-exclude-tags }}
           coverage: ${{ inputs.coverage-enabled && matrix.primary }}
           coverage-source: ${{ inputs.coverage-source }}
           inspectra-enabled: ${{ inputs.inspectra-enabled }}
@@ -678,7 +682,7 @@ jobs:
   coverage:
     name: Coverage
     needs: [plan, test]
-    if: ${{ !cancelled() && inputs.coverage-enabled && needs.test.result != 'skipped' }}
+    if: ${{ !cancelled() && inputs.coverage-enabled && inputs.coverage-aggregate && needs.test.result != 'skipped' }}
     runs-on: ${{ fromJSON(inputs.runners).linux || 'ubuntu-latest' }}
     timeout-minutes: 15
 
@@ -935,7 +939,7 @@ jobs:
           packages: ${{ needs.plan.outputs.packages }}
           working-directory: ${{ inputs.working-directory }}
           args: ${{ inputs.test-args }}
-          exclude-tags: ${{ inputs.golden-enabled && inputs.golden-tags || inputs.test-exclude-tags }}
+          exclude-tags: ${{ (inputs.golden-enabled && inputs.test-exclude-tags != '' && format('{0},{1}', inputs.golden-tags, inputs.test-exclude-tags)) || (inputs.golden-enabled && inputs.golden-tags) || inputs.test-exclude-tags }}
 
   pana:
     name: Package score

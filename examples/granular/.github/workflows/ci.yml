@@ -49,6 +49,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     with:
       fail-on: high
       profile: ci

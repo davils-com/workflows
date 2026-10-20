@@ -84,9 +84,17 @@ jobs:
       - name: Check the generated files
         if: ${{ !cancelled() }}
         run: |
-          bash tools/gen-schema.sh --check
-          bash tools/gen-flutter-ci.sh --check
-          bash tools/gen-docs.sh --check
+          status=0
+          for generator in gen-schema gen-flutter-ci gen-docs; do
+            if ! output="$(bash "tools/$generator.sh" --check 2>&1)"; then
+              echo "$output"
+              # The generator's own annotation names the drift; this one catches crashes.
+              grep -q '::error' <<<"$output" ||
+                echo "::error title=tools/$generator.sh::$(tail -5 <<<"$output" | sed 's/%/%25/g' | awk 'BEGIN { ORS = "%0A" } 1')"
+              status=1
+            fi
+          done
+          exit "$status"
 
       - name: Validate the configurations against the schema
         if: ${{ !cancelled() }}
@@ -104,11 +112,11 @@ jobs:
         run: bats --print-output-on-failure tests/scripts
 
       - name: Audit for code scanning
-        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork }}
+        if: ${{ !cancelled() && (github.event.pull_request.head.repo.full_name == '' || github.event.pull_request.head.repo.full_name == github.repository) }}
         run: zizmor --config .github/zizmor.yml --format sarif .github/workflows actions >"$RUNNER_TEMP/zizmor.sarif" || true
 
       - name: Upload the audit
-        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork }}
+        if: ${{ !cancelled() && (github.event.pull_request.head.repo.full_name == '' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: ${{ runner.temp }}/zizmor.sarif

@@ -198,7 +198,7 @@ on:
         type: boolean
         default: false
       integration-test-device:
-        description: "auto (linux with a virtual display), linux, macos or windows."
+        description: "auto (linux with a virtual display), linux, macos or windows; Flutter runs integration tests on desktop devices only."
         type: string
         default: auto
       coverage-enabled:
@@ -213,6 +213,10 @@ on:
         description: "true when the inspectra workflow runs in the same pipeline (for coverage-source auto)."
         type: boolean
         default: false
+      coverage-aggregate:
+        description: "Merge the coverage of the test jobs in a coverage job here (minimum, Codecov, Pages part); pipeline.yml merges it itself, together with Inspectra's."
+        type: boolean
+        default: true
       coverage-min:
         description: "Minimum total line coverage in percent; 0 disables the check."
         type: number
@@ -311,6 +315,7 @@ jobs:
       coverage-enabled: ${{ inputs.coverage-enabled }}
       coverage-source: ${{ inputs.coverage-source }}
       inspectra-enabled: ${{ inputs.inspectra-enabled }}
+      coverage-aggregate: ${{ inputs.coverage-aggregate }}
       coverage-min: ${{ inputs.coverage-min }}
       codecov-enabled: ${{ inputs.codecov-enabled }}
       pages-part-enabled: ${{ inputs.pages-part-enabled }}
