@@ -94,6 +94,8 @@ while IFS= read -r package; do
   fi
 
   echo "::group::Test $name ($path)"
+  log="$OUT_DIR/$name.log"
+  : >"$log"
   status=0
   # The subshell runs in an || list, where bash ignores set -e; every command that can fail
   # therefore exits the subshell with its status itself.
@@ -101,8 +103,8 @@ while IFS= read -r package; do
     cd "$path" || exit 1
     export PACKAGE_NAME="$name" PACKAGE_PATH="$path"
     if [[ -n "${COMMAND:-}" ]]; then
-      bash -euo pipefail -c "$COMMAND" || exit $?
-      exit 0
+      bash -euo pipefail -c "$COMMAND" 2>&1 | tee -a "$log"
+      exit "${PIPESTATUS[0]}"
     fi
     first=true
     for platform_args in "${invocations[@]}"; do
@@ -117,17 +119,25 @@ while IFS= read -r package; do
       [[ -n "${ARGS:-}" ]] && args+=($ARGS)
       if [[ "$TOOL" == flutter ]]; then
         [[ "$coverage" == true && "$first" == true ]] && args+=(--coverage)
-        flutter test "${args[@]}" || exit $?
+        flutter test "${args[@]}" 2>&1 | tee -a "$log"
+        status="${PIPESTATUS[0]}"
+        ((status == 0)) || exit "$status"
       elif [[ "$coverage" == true && "$first" == true ]]; then
         if supports_coverage_path; then
-          dart test --coverage-path=coverage/lcov.info "${args[@]}" || exit $?
+          dart test --coverage-path=coverage/lcov.info "${args[@]}" 2>&1 | tee -a "$log"
+          status="${PIPESTATUS[0]}"
+          ((status == 0)) || exit "$status"
         else
-          dart test --coverage=coverage/raw "${args[@]}" || exit $?
+          dart test --coverage=coverage/raw "${args[@]}" 2>&1 | tee -a "$log"
+          status="${PIPESTATUS[0]}"
+          ((status == 0)) || exit "$status"
           dart pub global activate coverage >/dev/null || exit $?
           dart pub global run coverage:format_coverage --lcov --in=coverage/raw --out=coverage/lcov.info --report-on=lib --package=. || exit $?
         fi
       else
-        dart test "${args[@]}" || exit $?
+        dart test "${args[@]}" 2>&1 | tee -a "$log"
+        status="${PIPESTATUS[0]}"
+        ((status == 0)) || exit "$status"
       fi
       first=false
     done
@@ -135,6 +145,11 @@ while IFS= read -r package; do
   echo "::endgroup::"
 
   if ((status != 0)); then
+    # The failed tests by name, from the [E] lines of the test runner.
+    sed -nE 's/^[0-9:]+ [-+~0-9 ]+: (.*) \[E\]$/\1/p' "$log" | sort -u | head -20 |
+      while IFS= read -r failed_test; do
+        echo "::error title=Failed test in $name::${failed_test//%/%25}"
+      done
     echo "::error title=Tests failed::$name ($path) failed with exit code $status."
     failed+=("$name")
   fi

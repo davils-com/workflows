@@ -126,7 +126,7 @@ Runs inspectra scan (OSV audit, pubspec rules, typosquatting, Trivy filesystem s
 | `command` (required) |  | The command that runs Inspectra (the command output of inspectra-setup). |
 | `working-directory` | `.` | Directory to scan, relative to the repository root. |
 | `recursive` | `true` | Also scan nested packages (pub workspaces and monorepos). |
-| `fail-on` | `high` | critical, high, medium, low, unknown, or none to never fail. |
+| `fail-on` | empty | Empty keeps fail_on of the Inspectra configuration; critical, high, medium, low, unknown, or none to never fail. |
 | `min-severity` | empty | Hide findings below this severity. |
 | `trivy-mode` | empty | auto, required or disabled; empty keeps the configuration. |
 | `trivy-version` | empty | Trivy version; empty keeps the configuration. |

@@ -90,7 +90,7 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `inspectra.check.root` | `auto` | `true`, `false`, `auto` |
 | `inspectra.scan.enabled` | `true` | `true`, `false`, `auto` |
 | `inspectra.scan.recursive` | `true` | boolean |
-| `inspectra.scan.fail-on` | `high` | `critical`, `high`, `medium`, `low`, `unknown`, `none` |
+| `inspectra.scan.fail-on` | empty | ``, `critical`, `high`, `medium`, `low`, `unknown`, `none` |
 | `inspectra.scan.min-severity` | empty | ``, `critical`, `high`, `medium`, `low`, `unknown` |
 | `inspectra.sarif.enabled` | `auto` | `true`, `false`, `auto` |
 | `inspectra.sarif.category` | `inspectra` | string |
@@ -367,7 +367,7 @@ inspectra:
   scan:
     enabled: true
     recursive: true
-    fail-on: high
+    fail-on: ''
     min-severity: ''
   sarif:
     enabled: auto

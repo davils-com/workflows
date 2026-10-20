@@ -147,9 +147,9 @@ on:
         type: boolean
         default: true
       fail-on:
-        description: critical, high, medium, low, unknown, or none to never fail the scan.
+        description: Empty keeps fail_on of the Inspectra configuration (which a policy may lock); critical, high, medium, low, unknown, or none to never fail the scan.
         type: string
-        default: high
+        default: ''
       min-severity:
         description: Hide findings below this severity.
         type: string
@@ -389,7 +389,7 @@ jobs:
           profile: ${{ inputs.profile }}
 
       - name: Collect the coverage
-        if: always() && inputs.coverage-artifacts
+        if: always()
         id: coverage
         working-directory: ${{ inputs.working-directory }}
         shell: bash
@@ -408,6 +408,10 @@ jobs:
             sed -E -e "s#^SF:$(pwd -P)/#SF:${prefix:+$prefix/}#" -e "s#^SF:(lib|bin|test)/#SF:${prefix:+$prefix/}${pkg}\\1/#" "$file" >"$out/$PACKAGE_NAME.lcov"
           fi
           echo "directory=$out" >>"$GITHUB_OUTPUT"
+          # The reports of the package, as a path upload-artifact accepts (no ./ segments).
+          reports="${REPO_PREFIX#./}/${PACKAGE_PATH#./}/.dart_tool/inspectra"
+          reports="$(sed -E 's#(^|/)\.(/|$)#\1#g; s#/+#/#g; s#^/##' <<<"$reports")"
+          echo "reports=$reports" >>"$GITHUB_OUTPUT"
 
       - name: Upload the coverage
         if: always() && inputs.coverage-artifacts
@@ -423,8 +427,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: inspectra-reports-${{ matrix.id }}
-          path: |
-            ${{ inputs.working-directory }}/${{ matrix.packages[0].path }}/.dart_tool/inspectra/
+          path: ${{ steps.coverage.outputs.reports }}/
           if-no-files-found: ignore
           retention-days: ${{ inputs.artifact-retention-days }}
 

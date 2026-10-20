@@ -60,7 +60,7 @@ jobs:
 | `coverage-artifacts` | boolean | `true` | Upload the coverage of the coverage gates as davils-coverage-inspectra-* artifacts. |
 | `scan-enabled` | boolean | `true` | Run inspectra scan. |
 | `scan-recursive` | boolean | `true` | Scan every package below the working directory. |
-| `fail-on` | string | `high` | critical, high, medium, low, unknown, or none to never fail the scan. |
+| `fail-on` | string | empty | Empty keeps fail_on of the Inspectra configuration (which a policy may lock); critical, high, medium, low, unknown, or none to never fail the scan. |
 | `min-severity` | string | empty | Hide findings below this severity. |
 | `sarif-enabled` | string | `auto` | true, false or auto (not for pull requests from forks); uploads the findings to GitHub code scanning. |
 | `sarif-category` | string | `inspectra` | Category of the SARIF uploads. |

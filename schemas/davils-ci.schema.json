@@ -588,6 +588,7 @@
             },
             "fail-on": {
               "enum": [
+                "",
                 "critical",
                 "high",
                 "medium",
@@ -595,7 +596,7 @@
                 "unknown",
                 "none"
               ],
-              "default": "high"
+              "default": ""
             },
             "min-severity": {
               "enum": [

@@ -18,9 +18,9 @@ inputs:
     required: false
     default: 'true'
   fail-on:
-    description: critical, high, medium, low, unknown, or none to never fail.
+    description: Empty keeps fail_on of the Inspectra configuration; critical, high, medium, low, unknown, or none to never fail.
     required: false
-    default: high
+    default: ''
   min-severity:
     description: Hide findings below this severity.
     required: false
@@ -89,7 +89,11 @@ runs:
         [[ "$OFFLINE" == true ]] && options+=(--offline)
         [[ -n "$EXTRA" ]] && options+=($EXTRA)
         gate=("${options[@]}")
-        if [[ "$FAIL_ON" == none ]]; then gate+=(--exit-zero); else gate+=(--fail-on "$FAIL_ON"); fi
+        if [[ "$FAIL_ON" == none ]]; then
+          gate+=(--exit-zero)
+        elif [[ -n "$FAIL_ON" ]]; then
+          gate+=(--fail-on "$FAIL_ON")
+        fi
         {
           echo "scan=${options[*]}"
           echo "gate=${gate[*]}"

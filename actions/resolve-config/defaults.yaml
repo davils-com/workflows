@@ -139,7 +139,7 @@ inspectra:
   scan:
     enabled: true
     recursive: true
-    fail-on: high
+    fail-on: ''
     min-severity: ''
   sarif:
     enabled: auto

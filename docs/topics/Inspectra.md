@@ -24,8 +24,9 @@ the API dump and generated files are current.
 1. A run with `--format sarif --exit-zero` for GitHub code scanning (category `inspectra`). Each
    rule carries a `security-severity`, so GitHub ranks the alerts. Pull requests from forks skip
    the upload.
-2. A run with `--format markdown --fail-on <scan.fail-on>`; the report goes to the job summary
-   and the exit code decides.
+2. A run with `--format markdown`; the report goes to the job summary and the exit code decides.
+   The threshold is `fail_on` of the Inspectra configuration; `scan.fail-on` overrides it, unless a
+   policy of the configuration locks it (Inspectra then exits with 65).
 
 `scan.fail-on: none` never fails. The Trivy database is cached between runs.
 
@@ -62,6 +63,7 @@ inspectra:
   check:
     root: auto
   scan:
+    # Empty keeps fail_on of the Inspectra configuration.
     fail-on: high
     min-severity: low
   trivy:

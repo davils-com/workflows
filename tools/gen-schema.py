@@ -24,7 +24,7 @@ CHOICES = {
     "flutter.integration-test.device": ["auto", "linux", "macos", "windows"],
     "inspectra.install": ["auto", "dev-dependency", "global", "binary"],
     "inspectra.check.root": ["auto", True, False],
-    "inspectra.scan.fail-on": ["critical", "high", "medium", "low", "unknown", "none"],
+    "inspectra.scan.fail-on": ["", "critical", "high", "medium", "low", "unknown", "none"],
     "inspectra.scan.min-severity": ["", "critical", "high", "medium", "low", "unknown"],
     "inspectra.trivy.mode": ["", "auto", "required", "disabled"],
     "writerside.builder": ["docker", "action"],
