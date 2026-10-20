@@ -264,7 +264,11 @@ on:
         type: number
         default: 0
       downgrade-enabled:
-        description: Resolve the lowest allowed dependency versions and analyze and test against them.
+        description: Resolve the lowest allowed dependency versions and analyze against them.
+        type: boolean
+        default: false
+      downgrade-test:
+        description: Also run the tests against the lowest versions. pub downgrade lowers the test runner's own dependencies as well, which often no longer fit the current SDK.
         type: boolean
         default: false
 
@@ -933,6 +937,7 @@ jobs:
           done < <(jq -r '.[].path' <<<"$PACKAGES")
 
       - name: Test against the lowest versions
+        if: inputs.downgrade-test
         uses: $/actions/test-packages
         with:
           tool: ${{ inputs.toolchain }}

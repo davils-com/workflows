@@ -304,6 +304,10 @@
             "enabled": {
               "$ref": "#/$defs/toggle",
               "default": false
+            },
+            "test": {
+              "type": "boolean",
+              "default": false
             }
           }
         },

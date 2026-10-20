@@ -77,7 +77,8 @@ jobs:
 | `coverage-min` | number | `0` | Minimum total line coverage in percent; 0 disables the check. |
 | `codecov-enabled` | boolean | `false` | Upload the coverage to Codecov; private repositories need the secret CODECOV_TOKEN. |
 | `pages-part-enabled` | boolean | `false` | Upload the HTML coverage report as a part of the GitHub Pages site (pages.yml). |
-| `downgrade-enabled` | boolean | `false` | Resolve the lowest allowed dependency versions and analyze and test against them. |
+| `downgrade-enabled` | boolean | `false` | Resolve the lowest allowed dependency versions and analyze against them. |
+| `downgrade-test` | boolean | `false` | Also run the tests against the lowest versions. pub downgrade lowers the test runner's own dependencies as well, which often no longer fit the current SDK. |
 
 ## Secrets
 

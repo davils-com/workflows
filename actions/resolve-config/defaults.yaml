@@ -77,6 +77,7 @@ dart:
     min-points: 0
   downgrade:
     enabled: false
+    test: false
   when:
     events: [push, pull_request, merge_group, schedule, workflow_dispatch]
     branches: []

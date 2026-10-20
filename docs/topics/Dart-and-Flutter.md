@@ -17,7 +17,7 @@ workflow; flutter-ci passes its inputs to dart-ci with `toolchain: flutter`.
 | Coverage | merges the lcov of the first job of every package, enforces `coverage.min`, Codecov | `coverage.enabled` |
 | Golden tests | the tests tagged `golden` on `golden.os`, where the goldens were recorded | `golden.enabled` |
 | Integration tests | `integration_test/` on a desktop device (Linux with a virtual display) | `integration-test.enabled` |
-| Lowest dependencies | `pub downgrade`, analyze and test on the lowest SDK | `downgrade.enabled` |
+| Lowest dependencies | `pub downgrade` and analyze on the lowest SDK; tests with `downgrade.test` | `downgrade.enabled` |
 | Package score | pana for every published package, `pana.min-points` | `pana.enabled` |
 
 ## Test platforms

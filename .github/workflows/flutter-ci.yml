@@ -230,7 +230,11 @@ on:
         type: boolean
         default: false
       downgrade-enabled:
-        description: "Resolve the lowest allowed dependency versions and analyze and test against them."
+        description: "Resolve the lowest allowed dependency versions and analyze against them."
+        type: boolean
+        default: false
+      downgrade-test:
+        description: "Also run the tests against the lowest versions. pub downgrade lowers the test runner's own dependencies as well, which often no longer fit the current SDK."
         type: boolean
         default: false
 
@@ -320,3 +324,4 @@ jobs:
       codecov-enabled: ${{ inputs.codecov-enabled }}
       pages-part-enabled: ${{ inputs.pages-part-enabled }}
       downgrade-enabled: ${{ inputs.downgrade-enabled }}
+      downgrade-test: ${{ inputs.downgrade-test }}

@@ -288,6 +288,7 @@ jobs:
       pana-enabled: ${{ fromJSON(needs.config.outputs.config).dart.pana.enabled }}
       pana-min-points: ${{ fromJSON(needs.config.outputs.config).dart.pana.min-points }}
       downgrade-enabled: ${{ fromJSON(needs.config.outputs.config).dart.downgrade.enabled }}
+      downgrade-test: ${{ fromJSON(needs.config.outputs.config).dart.downgrade.test }}
 
   flutter:
     name: Flutter

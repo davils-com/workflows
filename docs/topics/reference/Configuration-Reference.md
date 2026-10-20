@@ -50,6 +50,7 @@ Every option with its default, read from `actions/resolve-config/defaults.yaml`.
 | `dart.pana.enabled` | `false` | `true`, `false`, `auto` |
 | `dart.pana.min-points` | `0` | integer |
 | `dart.downgrade.enabled` | `false` | `true`, `false`, `auto` |
+| `dart.downgrade.test` | `false` | boolean |
 | `dart.when` |  | events, branches, paths |
 | `flutter.enabled` | `auto` | `true`, `false`, `auto` |
 | `flutter.versions` | `["stable"]` | list of string |
@@ -304,6 +305,7 @@ dart:
     min-points: 0
   downgrade:
     enabled: false
+    test: false
   when:
     events: [push, pull_request, merge_group, schedule, workflow_dispatch]
     branches: []

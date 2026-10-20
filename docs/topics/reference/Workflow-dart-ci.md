@@ -85,7 +85,8 @@ jobs:
 | `pages-part-enabled` | boolean | `false` | Upload the HTML coverage report as a part of the GitHub Pages site (pages.yml). |
 | `pana-enabled` | boolean | `false` | Dart only. Score the publishable packages with pana. |
 | `pana-min-points` | number | `0` | Minimum pana points; 0 only reports. |
-| `downgrade-enabled` | boolean | `false` | Resolve the lowest allowed dependency versions and analyze and test against them. |
+| `downgrade-enabled` | boolean | `false` | Resolve the lowest allowed dependency versions and analyze against them. |
+| `downgrade-test` | boolean | `false` | Also run the tests against the lowest versions. pub downgrade lowers the test runner's own dependencies as well, which often no longer fit the current SDK. |
 
 ## Secrets
 

@@ -10,4 +10,4 @@ executables:
   single: single
 
 dev_dependencies:
-  test: ^1.26.0
+  test: ^1.33.0
