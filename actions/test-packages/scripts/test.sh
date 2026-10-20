@@ -145,8 +145,12 @@ while IFS= read -r package; do
   echo "::endgroup::"
 
   if ((status != 0)); then
-    # The failed tests by name, from the [E] lines of the test runner.
-    sed -nE 's/^[0-9:]+ [-+~0-9 ]+: (.*) \[E\]$/\1/p' "$log" | sort -u | head -20 |
+    # The failed tests by name: the [E] lines of the expanded reporter, or the ❌ lines of the
+    # github reporter, which dart test picks in GitHub Actions.
+    {
+      sed -nE 's/^[0-9:]+ [-+~0-9 ]+: (.*) \[E\]$/\1/p' "$log"
+      sed -nE 's/^(::group::)?❌ (.*)$/\2/p' "$log" | sed -E 's/ \((failed|error)\)$//'
+    } | sort -u | head -20 |
       while IFS= read -r failed_test; do
         echo "::error title=Failed test in $name::${failed_test//%/%25}"
       done
